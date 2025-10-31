@@ -2,7 +2,7 @@ package auth
 
 import (
 	"time"
-	"videocall/app/config"
+	"videocall/internal/infrastructure/config"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -14,7 +14,7 @@ type JWT struct {
 
 type Claims struct {
 	Username string `json:"username"`
-	Room     string `json:"room"`
+	RoomID   string `json:"room"`
 	jwt.RegisteredClaims
 }
 

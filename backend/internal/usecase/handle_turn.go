@@ -1,4 +1,4 @@
-package processors
+package usecase
 
 import (
 	"crypto/hmac"
@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func (s *Service) HandleTurn(w http.ResponseWriter, r *http.Request) {
+func (s *ApiUseCases) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	// Проверка JWT
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {

@@ -1,11 +1,11 @@
-package signaling
+package messaging
 
 import (
 	"context"
 	"log"
 	"net/http"
 	"sync"
-	"videocall/app/auth"
+	"videocall/internal/infrastructure/auth"
 
 	"github.com/gorilla/websocket"
 )
@@ -69,7 +69,7 @@ func (c *Client) WritePump(ctx context.Context, finish chan<- struct{}) {
 		select {
 		case msg, ok := <-c.send:
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
@@ -85,7 +85,7 @@ func (c *Client) WritePump(ctx context.Context, finish chan<- struct{}) {
 func (c *Client) Close() {
 	c.once.Do(func() {
 		close(c.send)
-		c.conn.Close()
+		_ = c.conn.Close()
 		//log.Println("closing client socket")
 	})
 }

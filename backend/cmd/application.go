@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
+	"videocall/internal"
+	"videocall/internal/infrastructure/config"
 
-	"videocall/app"
-	"videocall/app/config"
+	"github.com/spf13/cobra"
 )
 
 var runApplicationCmd = &cobra.Command{
@@ -16,7 +16,7 @@ var runApplicationCmd = &cobra.Command{
 			panic(err)
 		}
 
-		if err := app.Run(cmd.Context(), cfg); err != nil {
+		if err := internal.Run(cmd.Context(), cfg); err != nil {
 			panic(err)
 		}
 

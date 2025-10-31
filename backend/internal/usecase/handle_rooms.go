@@ -1,27 +1,29 @@
-package processors
+package usecase
 
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-func (s *Service) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
-	type Req struct {
-		User     string `json:"username"`
-		Password string `json:"password"`
-	}
-	var req Req
+type PasswordReq struct {
+	Password string `json:"password"`
+	User     string `json:"username"`
+}
+
+func (s *ApiUseCases) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
+	var req PasswordReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 
 	roomID := strings.Replace(uuid.NewString(), "-", "", -1)
-	s.hub.AddRoom(roomID, req.Password)
+	s.roomRepository.AddRoom(roomID, req.Password)
 
 	token, err := s.jwt.Issue(req.User, roomID)
 	if err != nil {
@@ -39,7 +41,7 @@ func (s *Service) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Service) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
+func (s *ApiUseCases) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		http.Error(w, "room not specified", http.StatusBadRequest)
@@ -47,11 +49,7 @@ func (s *Service) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := parts[3]
 
-	type Req struct {
-		Password string `json:"password"`
-		User     string `json:"username"`
-	}
-	var req Req
+	var req PasswordReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
@@ -62,7 +60,7 @@ func (s *Service) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room, ok := s.hub.GetRoom(roomID)
+	room, ok := s.roomRepository.GetRoom(roomID)
 	if !ok {
 		http.Error(w, fmt.Sprintf("room not found %s", roomID), http.StatusNotFound)
 		return
@@ -91,7 +89,7 @@ func (s *Service) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Service) HandleFetchRoom(w http.ResponseWriter, r *http.Request) {
+func (s *ApiUseCases) HandleFetchRoom(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		http.Error(w, "room not specified", http.StatusBadRequest)
@@ -99,7 +97,7 @@ func (s *Service) HandleFetchRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := parts[3]
 
-	room, ok := s.hub.GetRoom(roomID)
+	room, ok := s.roomRepository.GetRoom(roomID)
 	if !ok {
 		http.Error(w, fmt.Sprintf("room not found %s", roomID), http.StatusNotFound)
 		return

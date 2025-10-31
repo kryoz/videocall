@@ -1,4 +1,4 @@
-package api
+package http
 
 import (
 	"net/http"
@@ -10,7 +10,6 @@ type ServiceHandlerInterface interface {
 	HandleJoinRoom(w http.ResponseWriter, r *http.Request)
 	HandleFetchRoom(w http.ResponseWriter, r *http.Request)
 	HandleTurn(w http.ResponseWriter, r *http.Request)
-	SignalHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type API struct {
@@ -51,9 +50,5 @@ func (api *API) RegisterHandlers() {
 
 	http.HandleFunc("/api/turn", func(w http.ResponseWriter, r *http.Request) {
 		api.processor.HandleTurn(w, r)
-	})
-
-	http.HandleFunc("/api/signal", func(w http.ResponseWriter, r *http.Request) {
-		api.processor.SignalHandler(w, r)
 	})
 }
