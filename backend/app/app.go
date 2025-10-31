@@ -23,7 +23,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	log.SetOutput(os.Stderr)
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 
-	log.Printf("CONFIG: %v", cfg)
+	//log.Printf("CONFIG: %v", cfg)
 
 	log.Println("Server listening on", cfg.Addr)
 	if err := http.ListenAndServe(cfg.Addr, nil); err != nil {

@@ -115,12 +115,12 @@ export default function CreateRoom() {
                         <InputGroup>
                             <Form.Control readOnly value={window.location.origin+shareLink} />
                             <Button
-                                variant={copied ? "success" : "outline-secondary"}
+                                variant={copied ? "outline-success" : "secondary"}
                                 onClick={copyToClipboard}
                             >
                                 {copied ? "✓ Скопировано" : "Копировать"}
                             </Button>
-                            <Button onClick={gotoJoin} variant="secondary">Войти</Button>
+                            <Button onClick={gotoJoin} variant="outline-secondary">Войти</Button>
 
                         </InputGroup>
                     </Alert>
