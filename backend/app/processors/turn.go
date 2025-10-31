@@ -1,4 +1,4 @@
-package app
+package processors
 
 import (
 	"crypto/hmac"
@@ -9,18 +9,17 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"videocall/app/config"
 )
 
-func handleTurn(w http.ResponseWriter, r *http.Request, cfg *config.Config, jwt *JWT) {
+func (s *Service) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	// Проверка JWT
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
 		http.Error(w, "missing bearer token", http.StatusUnauthorized)
 		return
 	}
-	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.Validate(tokenStr)
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+	tok, err := s.jwt.Validate(tokenStr)
 	if err != nil || !tok.Valid {
 		log.Printf("Invalid JWT token: %v", err)
 		http.Error(w, "invalid jwt", http.StatusUnauthorized)
@@ -29,7 +28,7 @@ func handleTurn(w http.ResponseWriter, r *http.Request, cfg *config.Config, jwt 
 
 	// Генерация TURN credentials для use-auth-secret
 	// TTL 24 часа для стабильности
-	ttl := time.Duration(cfg.Turn.TTL) * time.Second
+	ttl := time.Duration(s.cfg.Turn.TTL) * time.Second
 	exp := time.Now().Add(ttl)
 	timestamp := exp.Unix()
 
@@ -38,12 +37,12 @@ func handleTurn(w http.ResponseWriter, r *http.Request, cfg *config.Config, jwt 
 	username := fmt.Sprintf("%d:webrtc-user", timestamp)
 
 	// Генерация пароля: base64(hmac-sha1(secret, username))
-	h := hmac.New(sha1.New, []byte(cfg.Turn.Secret))
+	h := hmac.New(sha1.New, []byte(s.cfg.Turn.Secret))
 	h.Write([]byte(username))
 	password := base64.StdEncoding.EncodeToString(h.Sum(nil))
 
 	// Формирование полных TURN URIs
-	turnHost := cfg.Turn.Host
+	turnHost := s.cfg.Turn.Host
 
 	// Убедимся, что используется правильный порт
 	// Для TURN без TLS используем порт 3478, для TURNS (TLS) - 5349

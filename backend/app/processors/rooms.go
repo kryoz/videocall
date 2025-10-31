@@ -1,42 +1,15 @@
-package app
+package processors
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
-
-	"github.com/google/uuid"
 )
 
-type Room struct {
-	ID        string
-	Name      string
-	Password  string
-	CreatedAt time.Time
-	RoomSockets
-}
-
-type RoomSockets struct {
-	wsClients map[*Client]bool
-	mu        sync.RWMutex
-}
-
-type RoomStorage struct {
-	mu    sync.RWMutex
-	rooms map[string]*Room
-}
-
-func NewHub() *RoomStorage {
-	return &RoomStorage{
-		rooms: make(map[string]*Room),
-	}
-}
-
-func (rs *RoomStorage) HandleCreateRoom(w http.ResponseWriter, r *http.Request, jwt *JWT) {
+func (s *Service) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	type Req struct {
 		User     string `json:"username"`
 		Password string `json:"password"`
@@ -47,26 +20,17 @@ func (rs *RoomStorage) HandleCreateRoom(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	rs.mu.Lock()
 	roomID := strings.Replace(uuid.NewString(), "-", "", -1)
+	s.hub.AddRoom(roomID, req.Password)
 
-	rs.rooms[roomID] = &Room{
-		ID:        roomID,
-		Password:  req.Password,
-		CreatedAt: time.Now(),
-		RoomSockets: RoomSockets{
-			wsClients: make(map[*Client]bool),
-		},
-	}
-	rs.mu.Unlock()
-
-	token, err := jwt.Issue(req.User, roomID)
+	token, err := s.jwt.Issue(req.User, roomID)
 	if err != nil {
-		http.Error(w, "cannot issue token", http.StatusInternalServerError)
+		log.Printf("failed to generate token: %v", err)
+		http.Error(w, "cannot issue jwt", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("issued token for %s in room %s", req.User, roomID)
+	log.Printf("%s got jwt for room %s", req.User, roomID)
 
 	writeJSON(w, map[string]string{
 		"room_id":  roomID,
@@ -75,7 +39,7 @@ func (rs *RoomStorage) HandleCreateRoom(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
-func (rs *RoomStorage) HandleJoinRoom(w http.ResponseWriter, r *http.Request, jwt *JWT) {
+func (s *Service) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		http.Error(w, "room not specified", http.StatusBadRequest)
@@ -93,37 +57,60 @@ func (rs *RoomStorage) HandleJoinRoom(w http.ResponseWriter, r *http.Request, jw
 		return
 	}
 
-	rs.mu.RLock()
-	room, ok := rs.rooms[roomID]
-	rs.mu.RUnlock()
+	if req.User == "" {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	room, ok := s.hub.GetRoom(roomID)
 	if !ok {
 		http.Error(w, fmt.Sprintf("room not found %s", roomID), http.StatusNotFound)
 		return
 	}
+
 	if room.Password != "" && room.Password != req.Password {
 		http.Error(w, "invalid password", http.StatusUnauthorized)
 		return
 	}
 
-	if len(room.RoomSockets.wsClients) > 1 {
+	if len(room.Connections.WsClients) > 1 {
 		http.Error(w, "room already full", http.StatusNotAcceptable)
 		return
 	}
 
-	token, err := jwt.Issue(req.User, roomID)
+	token, err := s.jwt.Issue(req.User, roomID)
 	if err != nil {
 		http.Error(w, "cannot issue token", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("issued token for %s in room %s", req.User, roomID)
+	log.Printf("%s created room %s", req.User, roomID)
 
 	writeJSON(w, map[string]string{
 		"token": token,
 	})
 }
 
-func writeJSON(w http.ResponseWriter, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+func (s *Service) HandleFetchRoom(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "room not specified", http.StatusBadRequest)
+		return
+	}
+	roomID := parts[3]
+
+	room, ok := s.hub.GetRoom(roomID)
+	if !ok {
+		http.Error(w, fmt.Sprintf("room not found %s", roomID), http.StatusNotFound)
+		return
+	}
+
+	isProtected := "0"
+	if room.Password != "" {
+		isProtected = "1"
+	}
+
+	writeJSON(w, map[string]string{
+		"is_protected": isProtected,
+	})
 }

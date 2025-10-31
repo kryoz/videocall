@@ -18,7 +18,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     env_file:
-      - ./frontend/.env
+      - path: ./frontend/.env
+        required: false
     restart: no
     volumes:
       - ./frontend/build:/app/build
@@ -35,7 +36,6 @@ services:
     volumes:
       - ./frontend/build:/usr/share/caddy
       - ./caddy:/etc/caddy
-    profiles: ["dev"]
     depends_on:
       - backend
       - turn
@@ -52,7 +52,7 @@ services:
     ports:
       - "3478:3478"
       - "3478:3478/udp"
-      - "49152-51000:49152-51000/udp"
+      - "49152-49500:49152-49500/udp"
     volumes:
       - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf
     networks:

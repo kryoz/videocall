@@ -22,6 +22,7 @@ Fullstack-проект на базе golang + ReactJS, реализующий в
 
 ## Быстрый старт (локально)
 - Скопировать `backend/.env.example` в `backend/.env` и подправить TURN_HOST, чтобы соответствовал реальному IP вашего локалхоста
+- Сделать пустой файл `touch frontend/.env` (или сконфигурировать из env.example)
 - `make build-frontend`
 - `make build-backend`
 - `make run`

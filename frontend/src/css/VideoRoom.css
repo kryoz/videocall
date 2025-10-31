@@ -1,3 +1,9 @@
+.card {
+    background-color: var(--bs-modal-bg);
+    color: var(--bs-modal-color);
+    text-shadow: rgba(255, 255, 255, 0.3) 0px 0px 1px, rgba(255, 255, 255, 0.3) 0px 0px 2px, rgba(255, 255, 255, 0.2) 0px 0px 5px;
+}
+
 .video-fullscreen {
     width: 100%;
     height: 100%;
@@ -6,16 +12,13 @@
 
 .video-thumbnail {
     position: absolute !important;
-    bottom: 90px;
+    bottom: 100px;
     right: 20px;
-    width: 200px;
+    width: 180px;
     cursor: pointer;
     border-radius: 10px;
     transition: transform 0.2s ease;
-}
-
-.video-thumbnail:hover {
-    transform: scale(1.03);
+    transform: scaleX(-1)
 }
 
 .control-bar {
@@ -37,6 +40,18 @@
     justify-content: center;
     align-items: center;
 }
+
+.quality-monitor {
+    width: 64px;
+    height: 64px;
+    background-color: rgba(0,0,0,0.6);
+    border-radius: 50%;
+    padding: 6px;
+    z-index: 20;
+    cursor: default;
+    text-shadow: none !important;
+}
+
 
 @media (max-width: 768px) {
     .video-thumbnail {

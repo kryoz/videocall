@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
-import { useAuth } from "./AuthContext";
+import {useEffect, useRef} from "react";
+import {useAuth} from "./AuthContext";
 
-export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
+export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStatsUpdate}) {
     const BASE_PATH = process.env.REACT_APP_BASE_PATH || "";
     const { token, username } = useAuth();
     const pcRef = useRef(null);
@@ -277,6 +277,7 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
                 console.log("✅ Peer connection established successfully!");
             } else if (peer.connectionState === "failed") {
                 console.error("❌ Peer connection failed");
+                dropRemote()
             } else if (peer.connectionState === "disconnected") {
                 console.warn("⚠️ Peer connection disconnected");
             } else if (peer.connectionState === "closed") {
@@ -294,17 +295,22 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
         return peer;
     };
 
-    const closeCall = () => {
-        isClosingRef.current = true;
-
+    const endCall = () => {
         if (pcRef.current) {
+            sendSignal({ type: "endCall" });
             pcRef.current.close();
             pcRef.current = null;
         }
 
+        isClosingRef.current = true;
         if (wsRef.current) {
             wsRef.current.close();
             wsRef.current = null;
+        }
+
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach((t) => t.stop());
+            localStreamRef.current = null;
         }
 
         if (reconnectTimeoutRef.current) {
@@ -312,10 +318,135 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
             reconnectTimeoutRef.current = null;
         }
 
+        onRemoteStream(null)
         remoteUser.current = null;
         isRemoteDescriptionSet.current = false;
         pendingCandidates.current = [];
     };
+
+    const dropRemote = () => {
+        if (pcRef.current) {
+            pcRef.current.close();
+            pcRef.current = null;
+        }
+
+        onRemoteStream(null)
+        remoteUser.current = null;
+        isRemoteDescriptionSet.current = false;
+        pendingCandidates.current = [];
+    };
+
+    const handleWsMessage = async (msg) => {
+        switch (msg.type) {
+            case "offer":
+                await handleOffer(msg);
+                break;
+
+            case "answer":
+                await handleAnswer(msg);
+                break;
+
+            case "candidate":
+                await handleCandidate(msg);
+                break;
+
+            case "hello":
+                if (!remoteUser.current) {
+                    remoteUser.current = msg.from;
+                    if (onRemoteUser) onRemoteUser(remoteUser.current);
+
+                    console.log(`📞 Got hello from ${msg.from}, I am ${username}`);
+                    console.log("📞 I will initiate the call (send offer)");
+                    await fetchTurnAndStart();
+                }
+                break;
+            case "endCall":
+                await dropRemote();
+                break;
+            case "ping":
+                break;
+            default:
+                console.warn("Unknown message:", msg);
+        }
+    };
+
+    /**
+     * Calculate connection quality score (0-100)
+     */
+    const calculateQuality = (stats) =>{
+        let score = 100
+
+        // Reduce score based on packet loss
+        if (stats.video.inbound?.packetsLost && stats.video.inbound?.packetsReceived) {
+            const lossRate = stats.video.inbound.packetsLost / stats.video.inbound.packetsReceived
+            score -= lossRate * 50 // Up to 50 points for packet loss
+        }
+
+        // Reduce score based on round trip time
+        if (stats.connection?.currentRoundTripTime) {
+            const rtt = stats.connection.currentRoundTripTime * 1000 // Convert to ms
+            if (rtt > 150) {
+                score -= Math.min(30, (rtt - 150) / 10) // Up to 30 points for high latency
+            }
+        }
+
+        // Reduce score based on low frame rate
+        if (stats.video.inbound?.framesPerSecond) {
+            const fps = stats.video.inbound.framesPerSecond
+            if (fps < 15) {
+                score -= (15 - fps) * 2 // Up to 30 points for low FPS
+            }
+        }
+
+        return Math.max(0, Math.min(100, Math.round(score)))
+    }
+
+    /**
+     * Get WebRTC statistics
+     */
+    const getConnectionStats = async () => {
+        try {
+            const stats = await pcRef.current.getStats()
+            const result = {
+                video: {},
+                audio: {},
+                connection: {},
+            }
+
+            stats.forEach((report) => {
+                if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+                    result.video.inbound = {
+                        bytesReceived: report.bytesReceived,
+                        packetsReceived: report.packetsReceived,
+                        packetsLost: report.packetsLost,
+                        frameWidth: report.frameWidth,
+                        frameHeight: report.frameHeight,
+                        framesPerSecond: report.framesPerSecond,
+                    }
+                } else if (report.type === 'outbound-rtp' && report.mediaType === 'video') {
+                    result.video.outbound = {
+                        bytesSent: report.bytesSent,
+                        packetsSent: report.packetsSent,
+                        frameWidth: report.frameWidth,
+                        frameHeight: report.frameHeight,
+                        framesPerSecond: report.framesPerSecond,
+                    }
+                } else if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    result.connection = {
+                        currentRoundTripTime: report.currentRoundTripTime,
+                        availableOutgoingBitrate: report.availableOutgoingBitrate,
+                        bytesReceived: report.bytesReceived,
+                        bytesSent: report.bytesSent,
+                    }
+                }
+            })
+
+            return result
+        } catch (error) {
+            console.error('Failed to get connection stats:', error)
+            return null
+        }
+    }
 
     useEffect(() => {
         if (!token) {
@@ -349,34 +480,7 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
 
                 if (!msg.type) return;
 
-                switch (msg.type) {
-                    case "offer":
-                        await handleOffer(msg);
-                        break;
-
-                    case "answer":
-                        await handleAnswer(msg);
-                        break;
-
-                    case "candidate":
-                        await handleCandidate(msg);
-                        break;
-
-                    case "hello":
-                        if (!remoteUser.current) {
-                            remoteUser.current = msg.from;
-                            if (onRemoteUser) onRemoteUser(remoteUser.current);
-
-                            console.log(`📞 Got hello from ${msg.from}, I am ${username}`);
-                            console.log("📞 I will initiate the call (send offer)");
-                            await fetchTurnAndStart();
-                        }
-                        break;
-                    case "ping":
-                        break;
-                    default:
-                        console.warn("Unknown message:", msg);
-                }
+                await handleWsMessage(msg)
             };
 
             ws.onclose = (event) => {
@@ -402,12 +506,26 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
 
         connectWebSocket();
 
-        // Ping interval
-        const interval = setInterval(() => {
+        const pingInterval = setInterval(() => {
             if (wsRef.current?.readyState === WebSocket.OPEN) {
                 wsRef.current.send(JSON.stringify({ type: "ping" }));
             }
         }, 20000);
+
+        const qualityInterval = setInterval(async () => {
+            try {
+                if (!pcRef.current) {
+                    return null
+                }
+                const stats = await getConnectionStats()
+                if (stats) {
+                    const quality = calculateQuality(stats)
+                    onStatsUpdate(quality)
+                }
+            } catch (error) {
+                console.error('Quality monitoring error:', error)
+            }
+        }, 3000)
 
         return () => {
             isClosingRef.current = true;
@@ -426,13 +544,14 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer}) {
 
             wsRef.current = null;
             remoteUser.current = null;
-            clearInterval(interval);
+            clearInterval(pingInterval);
+            clearInterval(qualityInterval);
         };
     }, [token, username]);
 
     return {
         pcRef,
         localStreamRef,
-        closeCall,
+        endCall,
     };
 }
