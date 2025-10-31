@@ -1,0 +1,63 @@
+services:
+  backend:
+    container_name: backend
+    build: ./backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    depends_on:
+      - turn
+    #network_mode: host
+    networks:
+      - webrtc
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    env_file:
+      - ./frontend/.env
+    restart: no
+    volumes:
+      - ./frontend/build:/app/build
+    command: sh -c "npm run build"
+    profiles: [ "build" ]
+    networks:
+      - webrtc
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend/build:/usr/share/caddy
+      - ./caddy:/etc/caddy
+    profiles: ["dev"]
+    depends_on:
+      - backend
+      - turn
+    networks:
+      - webrtc
+
+  turn:
+    container_name: turn
+    image: coturn/coturn:latest
+    command: [ "-c", "/etc/coturn/turnserver.conf" ]
+    restart: unless-stopped
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49152-51000:49152-51000/udp"
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf
+    networks:
+      - webrtc
+
+networks:
+  webrtc:
+    driver: bridge

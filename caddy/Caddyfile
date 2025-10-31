@@ -1,0 +1,25 @@
+{
+    debug
+    auto_https off
+    admin off
+}
+
+:80 {
+    handle /api/* {
+                      header Access-Control-Allow-Origin "*"
+                      header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+                      header Access-Control-Allow-Headers "Content-Type, Authorization"
+                      reverse_proxy backend:8080
+                  }
+
+    handle /api/signal {
+        reverse_proxy backend:8080
+   }
+
+    handle /* {
+                     root * /usr/share/caddy
+                     try_files {path} /index.html
+                     file_server
+                 }
+
+}

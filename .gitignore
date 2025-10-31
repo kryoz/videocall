@@ -1,0 +1,49 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Scratch binary
+bin/scratch
+
+# Scratch temporary files
+*.tmp
+.answers.json
+
+# Local configuration
+dev/deployments/local.dev.env
+compose.override.yaml
+
+# Go test coverage
+coverage.html
+
+# Intellij Idea
+.idea
+.run
+
+# VS Code
+.vscode
+
+# tools binary
+dev/tools/bin
+
+
+# mac os
+.DS_Store
+
+frontend/build/
+frontend/node_modules/
+frontend/.env
+backend/.env
+docker-compose.override.yml
+local.mk
