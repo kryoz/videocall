@@ -1,4 +1,5 @@
-# VideoCall Demo
+# Private VideoCalls
+[🇬🇧 English version](README.en.md)
 
 Fullstack-проект на базе golang + ReactJS, реализующий видео/аудио звонки посредством WebRTC.
 
