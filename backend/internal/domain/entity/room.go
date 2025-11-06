@@ -5,7 +5,6 @@ import (
 )
 
 type Room struct {
-	Password  string
-	CreatedAt time.Time
-	Connections
+	CreatedAt     time.Time
+	CreatorUserID string
 }

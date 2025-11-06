@@ -20,8 +20,13 @@ func (s *ApiUseCases) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 	tok, err := s.jwt.Validate(tokenStr)
-	if err != nil || !tok.Valid {
+	if err != nil {
 		log.Printf("Invalid JWT token: %v", err)
+		http.Error(w, "invalid jwt", http.StatusUnauthorized)
+		return
+	}
+	if tok == nil || !tok.Valid {
+		log.Printf("Invalid JWT token: token is nil or not valid")
 		http.Error(w, "invalid jwt", http.StatusUnauthorized)
 		return
 	}

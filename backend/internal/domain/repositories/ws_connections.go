@@ -1,0 +1,96 @@
+package repositories
+
+import (
+	"context"
+	"log"
+	"sync"
+	"time"
+	"videocall/internal/infrastructure/messaging"
+)
+
+const roomCheckInterval = 60 * time.Second
+const emptyRoomTtl = 15 * time.Minute
+
+type Connections struct {
+	WsClients map[string]*messaging.Client
+	mu        sync.RWMutex
+}
+
+func NewConnections() *Connections {
+	return &Connections{
+		WsClients: make(map[string]*messaging.Client),
+	}
+}
+func (r *Connections) Publisher(ctx context.Context, sender *messaging.Client, read <-chan []byte, done chan<- struct{}) {
+	defer func() {
+		done <- struct{}{}
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-read:
+			if !ok {
+				return
+			}
+			r.mu.RLock()
+			for userID, c := range r.WsClients {
+				if userID != sender.UserID {
+					c.Send(msg)
+				}
+			}
+			r.mu.RUnlock()
+		}
+	}
+}
+
+func (r *Connections) AddClient(c *messaging.Client, roomID string) {
+	r.mu.Lock()
+	r.WsClients[c.UserID] = c
+	r.mu.Unlock()
+	log.Printf("👋 %s established connection with room %s", c.Username, roomID)
+}
+
+func (r *Connections) RemoveClient(c *messaging.Client, roomID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.WsClients[c.UserID]; ok {
+		delete(r.WsClients, c.UserID)
+		log.Printf("👤 %s disconnected from room %s", c.Username, roomID)
+	}
+
+	c.Close()
+}
+
+func (r *Connections) handleEmptyRooms(ctx context.Context, rs RoomRepositoryInterface) {
+	go func() {
+		ticker := time.NewTicker(roomCheckInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.mu.Lock()
+				rooms := make(map[string]bool, len(r.WsClients)/2)
+				for _, c := range r.WsClients {
+					if len(r.WsClients) == 0 {
+						rooms[c.RoomID] = true
+
+					}
+					//
+				}
+				for roomID := range r.WsClients {
+					room, _ := rs.GetRoom(roomID)
+					if room.CreatedAt.Add(emptyRoomTtl).Before(time.Now()) {
+						log.Printf("autoclean: delete empty room %s", roomID)
+						rs.DeleteRoom(roomID)
+					}
+				}
+				r.mu.Unlock()
+			}
+		}
+	}()
+}

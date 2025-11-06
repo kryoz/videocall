@@ -37,7 +37,6 @@ coverage.html
 # tools binary
 dev/tools/bin
 
-
 # mac os
 .DS_Store
 

@@ -1,107 +1,155 @@
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Container, Card, Form, Button, Alert } from "react-bootstrap";
+import { Container, Card, Button, Alert } from "react-bootstrap";
 import { useAuth } from "./AuthContext";
+import { useAuthFetch } from "./hooks/useAuthFetch";
 
 const BASE_PATH = process.env.REACT_APP_BASE_PATH || "";
 
 export default function JoinRoom() {
     const { room_id } = useParams();
-    const { username, setAuth } = useAuth();
-    const [protectWithPassword, setProtectWithPassword] = useState(false);
+    const { username, userId, jwt, setAuth, isInitializing, refreshToken } = useAuth();
     const navigate = useNavigate();
-    const [user, setUser] = useState(localStorage.getItem("user") || "");
-    const [password, setPassword] = useState("");
     const [error, setError] = useState("");
+    const [loading, setLoading] = useState(true);
+    const authFetch = useAuthFetch();
+
     const fadeError = (msg) => {
         setError(msg);
         setTimeout(() => setError(null), 5000);
-    }
-    
-    async function join(ev) {
-        ev.preventDefault();
+    };
 
-        const res = await fetch(`${BASE_PATH}/api/rooms/${room_id}/join`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: user, password }),
-        });
-
-        if (res.ok) {
-            const data = await res.json();
-            setAuth(data.token, user);
-            navigate(`/room/${room_id}`);
-        } else if (res.status === 406) {
-            fadeError("Комната уже заполнена")
-        } else if (res.status === 404) {
-            fadeError("Комната не найдена")
-        } else if (res.status === 401) {
-            fadeError("Неверный пароль")
-        } else if (res.status === 400) {
-            fadeError("Имя обязательно")
-        } else {
-            fadeError("Серверная ошибка, попробуйте позднее")
+    useEffect(() => {
+        // Wait for auth initialization to complete
+        if (isInitializing) {
+            return;
         }
-    }
 
-    useEffect(() => {
-        if (username) setUser(username);
-    }, [username]);
+        if (!jwt) {
+            // Redirect to auth if no JWT
+            setLoading(false);
+            return;
+        }
 
-    useEffect(() => {
-        if (user) localStorage.setItem("user", user);
-    }, [user]);
+        if (jwt) {
+            (async () => {
+                // Check if room exists
+                try {
+                    const res = await authFetch(`${BASE_PATH}/api/rooms/${room_id}/fetch`, {
+                        method: "POST",
+                    });
 
-    useEffect(() => {
-        (async () => {
-            const res = await fetch(`${BASE_PATH}/api/rooms/${room_id}/fetch`, {
+                    if (res.status === 404) {
+                        fadeError("Room not found");
+                        setLoading(false);
+                        return;
+                    } else if (!res.ok) {
+                        fadeError("Server error, please try later");
+                        setLoading(false);
+                        return;
+                    }
+
+                    // Room exists, now join it
+                    await joinRoom();
+                } catch (err) {
+                    fadeError(err.message || "Failed to check room");
+                    setLoading(false);
+                }
+            })();
+        }
+    }, [jwt, refreshToken, isInitializing, room_id]);
+
+    const joinRoom = async () => {
+        try {
+            const res = await authFetch(`${BASE_PATH}/api/rooms/${room_id}/join`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
             });
 
             if (res.ok) {
                 const data = await res.json();
-                setProtectWithPassword(data.is_protected === "1")
+
+                // Update jwt if we got a new one
+                if (data.jwt) {
+                    setAuth(data.jwt, userId, username);
+                }
+
+                // Navigate to video room
+                navigate(`/room/${room_id}`);
+            } else if (res.status === 406) {
+                fadeError("Room is full");
+                setLoading(false);
             } else if (res.status === 404) {
-                fadeError("Комната не найдена")
+                fadeError("Room not found");
+                setLoading(false);
             } else {
-                fadeError("Серверная ошибка, попробуйте позднее")
+                fadeError("Server error, please try later");
+                setLoading(false);
             }
-        })()
+        } catch (err) {
+            fadeError(err.message || "Failed to join room");
+            setLoading(false);
+        }
+    };
 
-    }, []);
+    // Show loading while initializing auth
+    if (isInitializing || (loading && (jwt || refreshToken))) {
+        return (
+            <Container className="py-5" style={{ maxWidth: 480 }}>
+                <Card className="p-4 text-center">
+                    <div className="spinner-border text-primary mb-3" role="status">
+                        <span className="visually-hidden">Загрузка...</span>
+                    </div>
+                    <p>Присоединяемся...</p>
+                </Card>
+            </Container>
+        );
+    }
 
+    // Show auth prompt only if no JWT and no refresh token
+    if (!jwt && !refreshToken) {
+        return (
+            <Container className="py-5" style={{maxWidth: 480}}>
+                <h2 className="text-center mb-4">Подключение к комнате</h2>
+                <Card className="p-4">
+                    {error && <Alert variant="danger">{error}</Alert>}
+
+                    <p className="text-center mb-3">
+                        Для входа в комнату необходимо идентифицироваться.
+                    </p>
+
+                    <Button
+                        variant="secondary"
+                        className="w-100 mb-2"
+                        onClick={() => navigate("/auth")}
+                    >
+                        Авторизоваться
+                    </Button>
+
+                    <Button
+                        variant="outline-secondary"
+                        className="w-100"
+                        onClick={() => navigate("/")}
+                    >
+                        На главную
+                    </Button>
+                </Card>
+            </Container>
+        );
+    }
+
+    // Default fallback state
     return (
         <Container className="py-5" style={{ maxWidth: 480 }}>
-            <h2 className="text-center mb-4">Подключиться к комнате</h2>
             <Card className="p-4">
                 {error && <Alert variant="danger">{error}</Alert>}
-                <Form onSubmit={join}>
-                    <Form.Group className="mb-3">
-                        <Form.Label>Ваше имя</Form.Label>
-                        <Form.Control
-                            value={user}
-                            onChange={(e) => setUser(e.target.value)}
-                            placeholder="Введите имя"
-                        />
-                    </Form.Group>
-
-                    {protectWithPassword && (
-                        <Form.Group className="mb-3">
-                            <Form.Label>Пароль комнаты</Form.Label>
-                            <Form.Control
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Введите пароль"
-                            />
-                        </Form.Group>
-                    )}
-
-                    <Button variant="secondary" className="w-100" onClick={join}>
-                        Присоединиться
-                    </Button>
-                </Form>
+                <p className="text-center">Невозможно подключиться. Попробуйте позже или пересоздайте комнату.</p>
+                <Button
+                    variant="outline-secondary"
+                    className="w-100"
+                    onClick={() => navigate("/")}
+                >
+                    На главную
+                </Button>
             </Card>
         </Container>
     );

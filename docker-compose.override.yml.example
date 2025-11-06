@@ -1,0 +1,104 @@
+services:
+  backend:
+    container_name: backend
+    build: ./backend
+    ports:
+      - "8080:8080"
+      - "40000:40000"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    # debugger option
+    #security_opt:
+    #  - "seccomp:unconfined"
+    #cap_add:
+    #  - SYS_PTRACE
+    #command: /dlv --listen=:40000 --headless=true --api-version=2 --accept-multiclient exec /app/server
+    # uncomment when using db storage
+    #depends_on:
+    #  db:
+    #    condition: service_healthy
+    networks:
+      - webrtc
+
+  # optional persistent storage, uncomment if you want
+  #db:
+  #  image: mariadb:10.11
+  #  container_name: videocall-mariadb
+  #  restart: unless-stopped
+  #  environment:
+  #    MYSQL_ROOT_PASSWORD: root_password
+  #    MYSQL_DATABASE: videocall
+  #    MYSQL_USER: videocall_user
+  #    MYSQL_PASSWORD: videocall_password
+  #  volumes:
+  #    - mariadb_data:/var/lib/mysql
+  #    - ./backend/migrations:/docker-entrypoint-initdb.d
+  #  ports:
+  #    - "3306:3306"
+  #  networks:
+  #    - webrtc
+  #  command: >
+  #    --innodb-buffer-pool-size=64M
+  #    --innodb-log-file-size=4M
+  #    --max-connections=20
+  #    --character-set-server=utf8mb4
+  #    --collation-server=utf8mb4_unicode_ci
+  #  healthcheck:
+  #        test: mysqladmin ping -h 127.0.0.1 -u $$MYSQL_USER --password=$$MYSQL_PASSWORD
+  #        start_period: 5s
+  #        interval: 5s
+  #        timeout: 5s
+  #        retries: 5
+  #volumes:
+  #   mariadb_data:
+  #     driver: local
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./frontend/.env
+        required: false
+    restart: no
+    volumes:
+      - ./frontend/build:/app/build
+    command: sh -c "npm run build"
+    profiles: [ "build" ]
+    networks:
+      - webrtc
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend/build:/usr/share/caddy
+      - ./caddy:/etc/caddy
+    depends_on:
+      - backend
+      - turn
+    networks:
+      - webrtc
+
+  turn:
+    container_name: turn
+    image: coturn/coturn:latest
+    command: [ "-c", "/etc/coturn/turnserver.conf" ]
+    restart: unless-stopped
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49152-49500:49152-49500/udp"
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf
+    networks:
+      - webrtc
+
+networks:
+  webrtc:
+    driver: bridge

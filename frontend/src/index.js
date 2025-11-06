@@ -4,6 +4,7 @@ import App from "./App";
 import { AuthProvider } from "./AuthContext";
 import "bootswatch/dist/vapor/bootstrap.min.css";
 import "./css/VideoRoom.css";
+import "./css/Auth.css";
 
 createRoot(document.getElementById("root")).render(
     <React.StrictMode>
