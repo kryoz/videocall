@@ -7,57 +7,12 @@ services:
     env_file:
       - ./backend/.env
     restart: unless-stopped
-    depends_on:
-      - turn
+    # enable in prod
     #network_mode: host
     networks:
       - webrtc
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    env_file:
-      - path: ./frontend/.env
-        required: false
-    restart: no
-    volumes:
-      - ./frontend/build:/app/build
-    command: sh -c "npm run build"
-    profiles: [ "build" ]
-    networks:
-      - webrtc
-
-  caddy:
-    image: caddy:2.8-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./frontend/build:/usr/share/caddy
-      - ./caddy:/etc/caddy
-    depends_on:
-      - backend
-      - turn
-    networks:
-      - webrtc
-
-  turn:
-    container_name: turn
-    image: coturn/coturn:latest
-    command: [ "-c", "/etc/coturn/turnserver.conf" ]
-    restart: unless-stopped
-    environment:
-      DETECT_EXTERNAL_IP: "yes"
-    ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "49152-49500:49152-49500/udp"
-    volumes:
-      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf
-    networks:
-      - webrtc
-
+# disable in prod
 networks:
   webrtc:
     driver: bridge

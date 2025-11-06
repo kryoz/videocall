@@ -37,6 +37,8 @@ coverage.html
 # tools binary
 dev/tools/bin
 
+# context assist
+memory-bank
 
 # mac os
 .DS_Store

@@ -13,10 +13,12 @@ import (
 const BufferSize = 256
 
 type Client struct {
+	UserID   string
 	Username string
+	RoomID   string
 	conn     *websocket.Conn
 	send     chan []byte
-	once     sync.Once // Ensure send channel is closed only once
+	once     sync.Once
 }
 
 var upgrader = websocket.Upgrader{
@@ -32,7 +34,9 @@ func NewClient(w http.ResponseWriter, r *http.Request, claims *auth.Claims) (*Cl
 	}
 
 	return &Client{
+		UserID:   claims.UserID,
 		Username: claims.Username,
+		RoomID:   claims.RoomID,
 		conn:     conn,
 		send:     make(chan []byte, BufferSize),
 	}, nil
@@ -40,7 +44,7 @@ func NewClient(w http.ResponseWriter, r *http.Request, claims *auth.Claims) (*Cl
 
 func (c *Client) ReadPump(ctx context.Context, read chan<- []byte) {
 	defer func() {
-		close(read) // закроет горутину с Publisher
+		close(read)
 	}()
 
 	for {
@@ -52,7 +56,6 @@ func (c *Client) ReadPump(ctx context.Context, read chan<- []byte) {
 
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
-			//log.Printf("error: %v", err)
 			return
 		}
 
@@ -86,17 +89,13 @@ func (c *Client) Close() {
 	c.once.Do(func() {
 		close(c.send)
 		_ = c.conn.Close()
-		//log.Println("closing client socket")
 	})
 }
 
 func (c *Client) Send(msg []byte) {
-	// Non-blocking send with proper error handling
 	select {
 	case c.send <- msg:
-		//log.Printf("sent: %s", msg)
 	default:
-		// Channel is full, drop message instead of closing channel
-		log.Printf("send channel full, dropping message for %s", c.Username)
+		log.Printf("send channel full, dropping message for user %s (%s)", c.Username, c.UserID)
 	}
 }

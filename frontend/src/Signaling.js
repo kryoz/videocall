@@ -3,7 +3,7 @@ import {useAuth} from "./AuthContext";
 
 export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStatsUpdate}) {
     const BASE_PATH = process.env.REACT_APP_BASE_PATH || "";
-    const { token, username } = useAuth();
+    const { username, userId, jwt, setAuth, isInitializing, refreshToken } = useAuth();
     const pcRef = useRef(null);
     const wsRef = useRef(null);
     const iceServers = useRef(null);
@@ -34,7 +34,7 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
     async function getIceServers() {
         try {
             const res = await fetch(`${BASE_PATH}/api/turn`, {
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { Authorization: `Bearer ${jwt}` },
             });
 
             if (res.ok) {
@@ -87,14 +87,44 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
     }
 
     async function fetchTurnAndStart() {
-        if (!token) {
-            console.error("Token not issued - please authorize first");
+        if (!jwt) {
+            console.error("jwt not issued - please authorize first");
             return;
         }
 
         isInitiator.current = true;
+
+        if (!localStreamRef.current) {
+            console.log("⏳ Waiting for local stream before creating offer...");
+            await waitForLocalStream();
+        }
+
         await startCall();
     }
+
+    const waitForLocalStream = () => {
+        return new Promise((resolve) => {
+            if (localStreamRef.current) {
+                console.log("✅ Local stream already available");
+                return resolve(localStreamRef.current);
+            }
+
+            console.log("⏳ Polling for local stream...");
+            const check = setInterval(() => {
+                if (localStreamRef.current) {
+                    clearInterval(check);
+                    console.log("✅ Local stream is now available");
+                    resolve(localStreamRef.current);
+                }
+            }, 100);
+
+            setTimeout(() => {
+                clearInterval(check);
+                console.warn("⚠️ Timeout waiting for local stream");
+                resolve(null);
+            }, 10000);
+        });
+    };
 
     const startCall = async (iceServers = []) => {
         try {
@@ -292,25 +322,32 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
             }
         };
 
+        peer.onnegotiationneeded = async () => {
+            console.log("🔄 Negotiation needed event triggered");
+
+            if (peer.signalingState === "stable" && isInitiator.current) {
+                try {
+                    console.log("📤 Creating and sending renegotiation offer...");
+                    const offer = await peer.createOffer();
+                    await peer.setLocalDescription(offer);
+                    sendSignal({ type: "offer", offer, from: username });
+                    console.log("✅ Renegotiation offer sent");
+                } catch (err) {
+                    console.error("❌ Error during renegotiation:", err);
+                }
+            }
+        };
+
         return peer;
     };
 
     const endCall = () => {
-        if (pcRef.current) {
-            sendSignal({ type: "endCall" });
-            pcRef.current.close();
-            pcRef.current = null;
-        }
+        sendSignal({ type: "endCall" });
 
         isClosingRef.current = true;
         if (wsRef.current) {
             wsRef.current.close();
             wsRef.current = null;
-        }
-
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((t) => t.stop());
-            localStreamRef.current = null;
         }
 
         if (reconnectTimeoutRef.current) {
@@ -449,8 +486,13 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
     }
 
     useEffect(() => {
-        if (!token) {
-            console.error("JWT token not issued!");
+        // Wait for auth initialization to complete
+        if (isInitializing) {
+            return;
+        }
+
+        if (!jwt) {
+            console.error("JWT not issued!");
             return () => {};
         }
 
@@ -458,7 +500,7 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
 
         const connectWebSocket = () => {
             const origin = window.location.origin.replace(/^http/, "ws");
-            const url = `${origin}${BASE_PATH}/api/signal?token=${encodeURIComponent(token)}`;
+            const url = `${origin}${BASE_PATH}/api/signal?jwt=${encodeURIComponent(jwt)}`;
 
             console.log("Connecting to WebSocket:", url);
             const ws = new WebSocket(url);
@@ -489,7 +531,7 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
                 onRemoteUser?.(null);
 
                 // Don't reconnect if we're intentionally closing
-                if (!isClosingRef.current && token) {
+                if (!isClosingRef.current && jwt) {
                     console.log("Attempting to reconnect in 3s...");
                     reconnectTimeoutRef.current = setTimeout(() => {
                         if (!isClosingRef.current) {
@@ -547,7 +589,7 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
             clearInterval(pingInterval);
             clearInterval(qualityInterval);
         };
-    }, [token, username]);
+    }, [jwt, refreshToken, isInitializing, username]);
 
     return {
         pcRef,

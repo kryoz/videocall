@@ -8,27 +8,48 @@ import (
 	"videocall/internal/domain/repositories"
 	"videocall/internal/infrastructure/auth"
 	"videocall/internal/infrastructure/config"
+	"videocall/internal/infrastructure/push"
+	"videocall/internal/infrastructure/token"
 )
 
 type ApiUseCases struct {
 	ctx            context.Context
-	roomRepository *repositories.RoomRepository
+	roomRepository repositories.RoomRepositoryInterface
+	userRepository repositories.UserRepositoryInterface
 	cfg            *config.Config
 	jwt            *auth.JWT
+	tokenService   *token.RefreshTokenService
+	pushService    *push.Service
+	connections    *repositories.Connections
 }
 
 type SignalingUseCases struct {
-	ctx            context.Context
-	roomRepository *repositories.RoomRepository
-	jwt            *auth.JWT
+	ctx         context.Context
+	connections *repositories.Connections
+	jwt         *auth.JWT
+	pushService *push.Service
 }
 
-func NewApiUseCases(ctx context.Context, hub *repositories.RoomRepository, cfg *config.Config, jwt *auth.JWT) *ApiUseCases {
-	return &ApiUseCases{ctx: ctx, roomRepository: hub, cfg: cfg, jwt: jwt}
+func NewApiUseCases(ctx context.Context, roomRepo repositories.RoomRepositoryInterface, userRepo repositories.UserRepositoryInterface, cfg *config.Config, jwt *auth.JWT, refreshTokenService *token.RefreshTokenService, pushService *push.Service, connections *repositories.Connections) *ApiUseCases {
+	return &ApiUseCases{
+		ctx:            ctx,
+		roomRepository: roomRepo,
+		userRepository: userRepo,
+		cfg:            cfg,
+		jwt:            jwt,
+		tokenService:   refreshTokenService,
+		pushService:    pushService,
+		connections:    connections,
+	}
 }
 
-func NewSignalingUseCases(ctx context.Context, hub *repositories.RoomRepository, jwt *auth.JWT) *SignalingUseCases {
-	return &SignalingUseCases{ctx: ctx, roomRepository: hub, jwt: jwt}
+func NewSignalingUseCases(ctx context.Context, connections *repositories.Connections, jwt *auth.JWT, pushService *push.Service) *SignalingUseCases {
+	return &SignalingUseCases{
+		ctx:         ctx,
+		connections: connections,
+		jwt:         jwt,
+		pushService: pushService,
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {

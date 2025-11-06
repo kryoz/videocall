@@ -12,11 +12,11 @@ import { Signaling } from "./Signaling";
 
 export default function VideoRoom() {
     const navigate = useNavigate();
-    const { token } = useAuth();
+    const { jwt } = useAuth();
     const { room_id } = useParams();
     const [remoteUser, setRemoteUser] = useState(null);
     const [hasRemoteStream, setHasRemoteStream] = useState(false);
-
+    const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
     const localRef = useRef(null);
     const remoteRef = useRef(null);
 
@@ -28,6 +28,7 @@ export default function VideoRoom() {
         onRemoteUser: (name) => setRemoteUser(name),
         onRemoteStream: (stream) => {
             setHasRemoteStream(!!stream)
+            setHasRemoteVideo(stream?.getVideoTracks().length > 0);
             if (remoteRef.current) {
                 remoteRef.current.srcObject = stream;
                 if (stream) {
@@ -51,33 +52,34 @@ export default function VideoRoom() {
 
     // Initialize local media stream
     useEffect(() => {
-        if (!token) {
+        if (!jwt) {
             navigate(`/join/${room_id}`)
             return
         }
 
         (async () => {
+            let stream
             try {
-                const stream = await initCamera()
-
-                if (!mounted) {
-                    stream.getTracks().forEach((t) => t.stop());
-                    return;
-                }
-
-                // Store stream in ref for Signaling
-                localStreamRef.current = stream;
-
-                // Set local video
-                if (localRef.current) {
-                    localRef.current.srcObject = stream;
-                }
-
-                console.log("✅ Local media initialized");
+                stream = await initCamera()
             } catch (err) {
                 console.error("🎥 Media error:", err);
-                alert("Failed to access camera/microphone: " + err.message);
+                stream = await initAudioOnly()
             }
+
+            if (!mounted) {
+                stream.getTracks().forEach((t) => t.stop());
+                return;
+            }
+
+            // Store stream in ref for signaling
+            localStreamRef.current = stream;
+
+            // Set local video
+            if (localRef.current) {
+                localRef.current.srcObject = stream;
+            }
+
+            console.log("✅ Local media initialized");
         })()
 
         return () => {
@@ -128,11 +130,13 @@ export default function VideoRoom() {
     const initCamera = async () => {
         return await navigator.mediaDevices.getUserMedia({
             video: videoSettings('user'),
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-            },
+            audio: audioSettings(),
+        });
+    }
+
+    const initAudioOnly = async () => {
+        return await navigator.mediaDevices.getUserMedia({
+            audio: audioSettings(),
         });
     }
 
@@ -164,10 +168,9 @@ export default function VideoRoom() {
             }
 
             // Обновляем локальное видео
-            newStream.getVideoTracks().forEach((track) =>
-                localStreamRef.current.addTrack(track)
-            );
-            localRef.current.srcObject = newStream;
+            if (localRef.current) {
+                localRef.current.srcObject = newStream;
+            }
             localStreamRef.current = newStream;
 
             setCameraFacingMode(newMode);
@@ -183,14 +186,40 @@ export default function VideoRoom() {
             return;
         }
 
-        const audioTrack = localStreamRef.current
-            .getTracks()
-            .find((t) => t.kind === "audio");
-
-        if (audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled;
-            setMicEnabled(audioTrack.enabled);
-            console.log(`🎤 Microphone ${audioTrack.enabled ? 'enabled' : 'disabled'}`);
+        const audioTracks = localStreamRef.current.getAudioTracks();
+        if (audioTracks.length > 0) {
+            const audioTrack = audioTracks[0];
+            
+            // Create a new reference to the track and enable/disable it
+            const newEnabledState = !audioTrack.enabled;
+            audioTrack.enabled = newEnabledState;
+            
+            // Force update state - this ensures UI sync regardless of browser behavior
+            setMicEnabled(newEnabledState);
+            
+            // Debug for browser-specific issues
+            console.log(`🎤 Microphone ${newEnabledState ? 'enabled' : 'disabled'}`, {
+                trackEnabled: audioTrack.enabled,
+                trackId: audioTrack.id,
+                trackKind: audioTrack.kind,
+                userAgent: navigator.userAgent
+            });
+            
+            // Additional verification for problematic browsers like Vivaldi
+            if (navigator.userAgent.includes('Vivaldi')) {
+                setTimeout(() => {
+                    const refreshedTracks = localStreamRef.current?.getAudioTracks();
+                    if (refreshedTracks && refreshedTracks.length > 0) {
+                        const refreshedTrack = refreshedTracks[0];
+                        console.log('🔄 Vivaldi track verification:', {
+                            refreshEnabled: refreshedTrack.enabled,
+                            originalState: newEnabledState
+                        });
+                    }
+                }, 100);
+            }
+        } else {
+            console.warn("No audio tracks found in local stream");
         }
     };
 
@@ -200,14 +229,16 @@ export default function VideoRoom() {
             return;
         }
 
-        const videoTrack = localStreamRef.current
-            .getTracks()
-            .find((t) => t.kind === "video");
-
-        if (videoTrack) {
-            videoTrack.enabled = !videoTrack.enabled;
-            setCamEnabled(videoTrack.enabled);
-            console.log(`📹 Camera ${videoTrack.enabled ? 'enabled' : 'disabled'}`);
+        const videoTracks = localStreamRef.current.getVideoTracks();
+        if (videoTracks.length > 0) {
+            const videoTrack = videoTracks[0];
+            // Ensure we're accessing the actual track from the stream each time
+            const track = localStreamRef.current.getVideoTracks().find(t => t === videoTrack);
+            if (track) {
+                track.enabled = !track.enabled;
+                setCamEnabled(track.enabled);
+                console.log(`📹 Camera ${track.enabled ? 'enabled' : 'disabled'}`);
+            }
         }
     };
 
@@ -222,7 +253,6 @@ export default function VideoRoom() {
                 video: displaySettings(),
                 audio: false,
             });
-            localRef.current = screenStream;
 
             // 2. Берём первый видеотрек (экран)
             const screenTrack = screenStream.getVideoTracks()[0];
@@ -240,7 +270,9 @@ export default function VideoRoom() {
             }
 
             // 4. Отображаем локально
-            localRef.current.srcObject = screenStream;
+            if (localRef.current) {
+                localRef.current.srcObject = screenStream;
+            }
             setIsScreenSharing(true);
 
             // 5. Когда пользователь остановит демонстрацию (через UI браузера)
@@ -253,47 +285,58 @@ export default function VideoRoom() {
     };
 
     const stopScreenShare = async () => {
-        // 1. Остановить экранный стрим
-        localRef.current?.getTracks().forEach((t) => t.stop());
-
-        // 2. Вернуть камеру обратно
-        let cameraTrack = null
         try {
-            cameraTrack = localStreamRef.current
+            // 1. Остановить экранный стрим
+            if (localRef.current?.srcObject) {
+                localRef.current.srcObject.getTracks().forEach((t) => t.stop());
+            }
+
+            // 2. Получить текущую камеру из localStreamRef
+            const cameraTrack = localStreamRef.current
                 ?.getVideoTracks()
                 ?.find((t) => t.readyState === "live");
-            if (!cameraTrack) return;
-        } catch (err) {
-            console.error(err)
-            return;
-        }
 
-        if (pcRef.current) {
-            const sender = pcRef.current
-                .getSenders()
-                .find((s) => s.track?.kind === "video");
+            if (cameraTrack && pcRef.current) {
+                const sender = pcRef.current
+                    .getSenders()
+                    .find((s) => s.track?.kind === "video");
 
-            if (sender) {
-                await sender.replaceTrack(cameraTrack);
+                if (sender) {
+                    await sender.replaceTrack(cameraTrack);
+                }
             }
-        }
 
-        // 3. Вернуть локальное отображение камеры
-        localRef.current.srcObject = localStreamRef.current;
-        setIsScreenSharing(false);
+            // 3. Вернуть локальное отображение камеры
+            if (localRef.current) {
+                localRef.current.srcObject = localStreamRef.current;
+            }
+            setIsScreenSharing(false);
+        } catch (err) {
+            console.error("Error stopping screen share:", err);
+        }
     };
 
     const leaveRoom = () => {
-        endCall();
-
-        mounted = false;
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((t) => t.stop());
             localStreamRef.current = null;
         }
 
-        localRef.current.srcObject = null;
-        remoteRef.current.srcObject = null;
+        endCall();
+
+        if (localRef.current) {
+            localRef.current.srcObject = null;
+        }
+
+        if (pcRef.current) {
+            pcRef.current.close();
+            pcRef.current = null;
+        }
+
+        mounted = false;
+        if (remoteRef.current) {
+            remoteRef.current.srcObject = null;
+        }
 
         navigate("/");
     };
@@ -307,11 +350,19 @@ export default function VideoRoom() {
         }
     }
 
+    const audioSettings = () => {
+        return {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+        }
+    }
+
     const displaySettings = () => {
         return {
             cursor: "always",
-            width: { ideal: 1920, max: 2560 },
-            height: { ideal: 1080, max: 1440 },
+            width: { ideal: 1920, max: 3840 },
+            height: { ideal: 1080, max: 2160 },
             frameRate: { ideal: 15, max: 30 },
         }
     }
@@ -405,6 +456,21 @@ export default function VideoRoom() {
                 />
             </Card>
 
+            {/* Audio-only indicator */}
+            {hasRemoteStream && !hasRemoteVideo && (
+                <div
+                    className="position-absolute top-50 start-50 translate-middle d-flex flex-column align-items-center"
+                    style={{
+                        backgroundColor: "rgba(0, 0, 0, 0.7)",
+                        padding: "2rem",
+                        borderRadius: "1rem",
+                    }}
+                >
+                    <FaMicrophone size={80} className="text-light mb-3" />
+                    <span className="text-light fs-5">Только аудио</span>
+                </div>
+            )}
+
             {/* Remote user name */}
             <div className="position-absolute top-0 start-0 p-3">
                 <h5 className="text-light mb-0">
@@ -436,7 +502,7 @@ export default function VideoRoom() {
                     <Button
                         variant="danger"
                         onClick={stopScreenShare}
-                        className="bg-red-600 text-white px-4 py-2 rounded"
+                        className="control-btn"
                         title="Остановить демонстрацию"
                     >
                         <FaDisplay />
@@ -465,7 +531,7 @@ export default function VideoRoom() {
                     variant="danger"
                     className="control-btn"
                     onClick={leaveRoom}
-                    title="Leave call"
+                    title="Покинуть"
                 >
                     <FaPhoneSlash />
                 </Button>

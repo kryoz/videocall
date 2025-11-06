@@ -10,38 +10,47 @@ import (
 	"github.com/google/uuid"
 )
 
-type PasswordReq struct {
-	Password string `json:"password"`
-	User     string `json:"username"`
+// MaxRoomUsers Only 2 users in a room tested so far
+const MaxRoomUsers = 2
+
+type InviteRequest struct {
+	InvitedUsername string `json:"invited_username"`
 }
 
 func (s *ApiUseCases) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
-	var req PasswordReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+	oldJwt, claims, err := s.validateAuthHeader(r)
+	if err != nil || !oldJwt.Valid {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	roomID := strings.Replace(uuid.NewString(), "-", "", -1)
-	s.roomRepository.AddRoom(roomID, req.Password)
+	s.roomRepository.AddRoom(roomID, claims.UserID)
 
-	token, err := s.jwt.Issue(req.User, roomID)
+	//refresh token to add roomID
+	jwtStr, _, err := s.jwt.Issue(claims.UserID, claims.Username, roomID)
 	if err != nil {
 		log.Printf("failed to generate token: %v", err)
 		http.Error(w, "cannot issue jwt", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("%s got jwt for room %s", req.User, roomID)
+	log.Printf("User %s (%s) created room %s", claims.Username, claims.UserID, roomID)
 
 	writeJSON(w, map[string]string{
 		"room_id":  roomID,
-		"token":    token,
+		"jwt":      jwtStr,
 		"join_url": "/join/" + roomID,
 	})
 }
 
 func (s *ApiUseCases) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
+	jwtTok, claims, err := s.validateAuthHeader(r)
+	if err != nil || !jwtTok.Valid {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		http.Error(w, "room not specified", http.StatusBadRequest)
@@ -49,43 +58,105 @@ func (s *ApiUseCases) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := parts[3]
 
-	var req PasswordReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-
-	if req.User == "" {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-
 	room, ok := s.roomRepository.GetRoom(roomID)
 	if !ok {
 		http.Error(w, fmt.Sprintf("room not found %s", roomID), http.StatusNotFound)
 		return
 	}
 
-	if room.Password != "" && room.Password != req.Password {
-		http.Error(w, "invalid password", http.StatusUnauthorized)
-		return
-	}
-
-	if len(room.Connections.WsClients) > 1 {
+	if len(s.connections.WsClients) > MaxRoomUsers-1 {
 		http.Error(w, "room already full", http.StatusNotAcceptable)
 		return
 	}
 
-	token, err := s.jwt.Issue(req.User, roomID)
+	// Refresh token to include roomID
+	jwtStr, _, err := s.jwt.Issue(claims.UserID, claims.Username, roomID)
 	if err != nil {
-		http.Error(w, "cannot issue token", http.StatusInternalServerError)
+		log.Printf("failed to generate token: %v", err)
+		http.Error(w, "cannot issue jwt", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("%s created room %s", req.User, roomID)
+	// Send notification to room creator if he is absent but has push enabled
+	if s.pushService != nil && room.CreatorUserID != "" && room.CreatorUserID != claims.UserID {
+		for userID := range s.connections.WsClients {
+			if userID != claims.UserID {
+				go func() {
+					creator, err := s.userRepository.GetUser(room.CreatorUserID)
+					if err == nil && creator.PushSubscription != nil {
+						if err := s.pushService.NotifyUserJoined(room.CreatorUserID, claims.Username, roomID); err != nil {
+							log.Printf("Failed to send join notification: %v", err)
+						}
+					}
+				}()
+			}
+		}
+	}
+
+	log.Printf("User %s (%s) joined room %s", claims.Username, claims.UserID, roomID)
 
 	writeJSON(w, map[string]string{
-		"token": token,
+		"jwt": jwtStr,
+	})
+}
+
+func (s *ApiUseCases) HandleInviteToRoom(w http.ResponseWriter, r *http.Request) {
+	token, claims, err := s.validateAuthHeader(r)
+	if err != nil || !token.Valid {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "room not specified", http.StatusBadRequest)
+		return
+	}
+	roomID := parts[3]
+
+	var req InviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.InvitedUsername == "" {
+		http.Error(w, "invited_username required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if room exists
+	_, ok := s.roomRepository.GetRoom(roomID)
+	if !ok {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if invited user exists and has push subscription
+	invitedUser, err := s.userRepository.GetUserByUsername(req.InvitedUsername)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	if invitedUser.PushSubscription == nil {
+		http.Error(w, "user has no push subscription", http.StatusBadRequest)
+		return
+	}
+
+	// Send notification
+	if s.pushService != nil {
+		if err := s.pushService.NotifyRoomInvite(claims.UserID, claims.Username, invitedUser.ID, roomID); err != nil {
+			log.Printf("Failed to send invite notification: %v", err)
+			http.Error(w, "failed to send notification", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	log.Printf("✅ Invite sent from %s to %s for room %s", claims.Username, req.InvitedUsername, roomID)
+
+	writeJSON(w, map[string]string{
+		"status": "invited",
 	})
 }
 
@@ -97,18 +168,13 @@ func (s *ApiUseCases) HandleFetchRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := parts[3]
 
-	room, ok := s.roomRepository.GetRoom(roomID)
+	_, ok := s.roomRepository.GetRoom(roomID)
 	if !ok {
 		http.Error(w, fmt.Sprintf("room not found %s", roomID), http.StatusNotFound)
 		return
 	}
 
-	isProtected := "0"
-	if room.Password != "" {
-		isProtected = "1"
-	}
-
 	writeJSON(w, map[string]string{
-		"is_protected": isProtected,
+		"exists": "true",
 	})
 }
