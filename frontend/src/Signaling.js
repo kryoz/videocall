@@ -94,35 +94,44 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
 
         isInitiator.current = true;
 
+        // Ждём готовности локального стрима перед началом звонка
         if (!localStreamRef.current) {
             console.log("⏳ Waiting for local stream before creating offer...");
-            await waitForLocalStream();
+            try {
+                await waitForLocalStream();
+            } catch (err) {
+                console.error("❌ Failed to get local stream:", err);
+                // Не нужно продолжать без стрима иначе упадёт с ошибкой m-line ordering
+                return;
+            }
         }
 
         await startCall();
     }
 
     const waitForLocalStream = () => {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             if (localStreamRef.current) {
                 console.log("✅ Local stream already available");
                 return resolve(localStreamRef.current);
             }
 
-            console.log("⏳ Polling for local stream...");
+            console.log("⏳ Waiting for local stream before creating offer...");
+            let attempts = 0;
+            const maxAttempts = 150; // 15 сек (150 * 100ms)
+
             const check = setInterval(() => {
+                attempts++;
                 if (localStreamRef.current) {
                     clearInterval(check);
-                    console.log("✅ Local stream is now available");
+                    console.log(`✅ Local stream is now available (after ${attempts * 100}ms)`);
                     resolve(localStreamRef.current);
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(check);
+                    console.error("❌ Timeout waiting for local stream after 15 seconds");
+                    reject(new Error("Timeout waiting for local stream"));
                 }
             }, 100);
-
-            setTimeout(() => {
-                clearInterval(check);
-                console.warn("⚠️ Timeout waiting for local stream");
-                resolve(null);
-            }, 10000);
         });
     };
 
@@ -136,28 +145,59 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
                 pcRef.current = initPeerConnection(iceServers.current);
             }
 
-            // Add local tracks if available
-            if (localStreamRef.current) {
-                const existingSenders = pcRef.current.getSenders();
-                localStreamRef.current.getTracks().forEach((track) => {
-                    // Check if track is already added
-                    const alreadyAdded = existingSenders.some(sender => sender.track === track);
-                    if (!alreadyAdded) {
-                        pcRef.current.addTrack(track, localStreamRef.current);
-                        console.log(`➕ Added ${track.kind} track to peer connection (startCall)`);
-                    }
-                });
-            } else {
-                console.warn("⚠️ No local stream available when creating offer");
+            if (!localStreamRef.current) {
+                console.error("❌ CRITICAL: Cannot create offer without local stream - this will cause m-line ordering issues!");
+                throw new Error("Local stream not available");
             }
+
+            // Add local tracks
+            const existingSenders = pcRef.current.getSenders();
+            console.log(`📊 Current senders before adding tracks: ${existingSenders.length}`);
+
+            const tracks = localStreamRef.current.getTracks();
+            console.log(`📊 Available tracks in local stream: ${tracks.map(t => t.kind).join(', ')}`);
+
+            if (tracks.length === 0) {
+                console.error("❌ CRITICAL: Local stream has no tracks!");
+                throw new Error("Local stream has no tracks");
+            }
+
+            const hasVideoTrack = tracks.some(t => t.kind === 'video');
+
+            tracks.forEach((track) => {
+                // Check if track is already added
+                const alreadyAdded = existingSenders.some(sender => sender.track === track);
+                if (!alreadyAdded) {
+                    pcRef.current.addTrack(track, localStreamRef.current);
+                    console.log(`➕ Added ${track.kind} track to peer connection (startCall)`);
+                } else {
+                    console.log(`⏭️  ${track.kind} track already added, skipping`);
+                }
+            });
+
+            // Отдельный случай, если у инициатора нет камеры
+            // Используем тогда трансивер recvonly
+            if (!hasVideoTrack) {
+                console.log("⚠️ No video track in local stream, adding recvonly video transceiver");
+                pcRef.current.addTransceiver('video', { direction: 'recvonly' });
+                console.log("✅ Added recvonly video transceiver to receive remote video");
+            }
+
+            const sendersAfter = pcRef.current.getSenders();
+            console.log(`📊 Senders after adding tracks: ${sendersAfter.length} (${sendersAfter.map(s => s.track?.kind || 'null').join(', ')})`);
 
             console.log("📤 Creating and sending offer...");
             const offer = await pcRef.current.createOffer();
+            console.log("📋 Offer SDP includes:",
+                offer.sdp.includes('m=video') ? '✅ video' : '❌ no video',
+                offer.sdp.includes('m=audio') ? '✅ audio' : '❌ no audio'
+            );
             await pcRef.current.setLocalDescription(offer);
             sendSignal({ type: "offer", offer, from: username });
             console.log("✅ Initiated call. Sending offer to "+remoteUser.current);
         } catch (err) {
             console.error("❌ Error starting call:", err);
+            throw err;
         }
     };
 
@@ -170,12 +210,11 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
                 if (onRemoteUser) onRemoteUser(remoteUser.current);
             }
 
-            // Get ICE servers first
             if (!iceServers.current) {
                 iceServers.current = await getIceServers();
             }
 
-            // Create peer connection (для ведомого)
+            // Создать peer connection (для ведомого)
             if (!pcRef.current) {
                 console.log("Creating peer connection to handle offer");
                 pcRef.current = initPeerConnection(iceServers.current);
@@ -187,7 +226,6 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
             isRemoteDescriptionSet.current = true;
             console.log("✅ Remote offer set (RemoteDescription)");
 
-            // Add all buffered candidates
             if (pendingCandidates.current.length > 0) {
                 console.log(`📦 Adding ${pendingCandidates.current.length} buffered candidates`);
                 for (const c of pendingCandidates.current) {
@@ -201,7 +239,15 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
             }
 
             console.log("📤 Creating and sending answer...");
+
+            const senders = pcRef.current.getSenders();
+            console.log(`📊 Responder's senders: ${senders.length} (${senders.map(s => s.track?.kind || 'null').join(', ')})`);
+
             const answer = await pcRef.current.createAnswer();
+            console.log("📋 Answer SDP includes:",
+                answer.sdp.includes('m=video') ? '✅ video' : '❌ no video',
+                answer.sdp.includes('m=audio') ? '✅ audio' : '❌ no audio'
+            );
             await pcRef.current.setLocalDescription(answer);
             sendSignal({ type: "answer", answer });
             console.log("✅ Answer sent");
@@ -222,7 +268,6 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
             isRemoteDescriptionSet.current = true;
             console.log("✅ Remote description (answer) set");
 
-            // Add buffered candidates
             for (const c of pendingCandidates.current) {
                 try {
                     await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
@@ -254,7 +299,6 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
     };
 
     const initPeerConnection = (iceServers = []) => {
-        // Don't recreate if already exists
         if (pcRef.current) {
             console.log("⚠️ Peer connection already exists, reusing it");
             return pcRef.current;
@@ -319,22 +363,6 @@ export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStats
             console.log("🎥 Remote track received:", e.track.kind);
             if (e.streams && e.streams[0]) {
                 onRemoteStream?.(e.streams[0]);
-            }
-        };
-
-        peer.onnegotiationneeded = async () => {
-            console.log("🔄 Negotiation needed event triggered");
-
-            if (peer.signalingState === "stable" && isInitiator.current) {
-                try {
-                    console.log("📤 Creating and sending renegotiation offer...");
-                    const offer = await peer.createOffer();
-                    await peer.setLocalDescription(offer);
-                    sendSignal({ type: "offer", offer, from: username });
-                    console.log("✅ Renegotiation offer sent");
-                } catch (err) {
-                    console.error("❌ Error during renegotiation:", err);
-                }
             }
         };
 

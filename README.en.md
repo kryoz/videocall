@@ -17,7 +17,7 @@ A full-stack project built with Golang and ReactJS, implementing video/audio cal
 - You can use `coturn` as your own TURN server, but make sure to read the configuration docs carefully — pay attention to SSL, external-ip, and firewall settings.
 - The project exposes a REST API under `/api/`, secured with JWT.
 - The WebSocket endpoint `/api/signal` is also JWT-protected.
-- Room data is stored **in-memory**. For persistence or horizontal scaling, you’ll need to implement support for an external storage such as Redis.
+- Room data is stored in-memory by default. For persistence or horizontal scaling you can switch to env `STORAGE_TYPE=mariadb`.
 
 
 ## Quick Start (Local)
