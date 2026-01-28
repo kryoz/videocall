@@ -85,8 +85,8 @@ func (s *Service) SendNotification(userID string, payload NotificationPayload) e
 
 func (s *Service) NotifyRoomInvite(inviterUserID, inviterUsername, invitedUserID, roomID string) error {
 	return s.SendNotification(invitedUserID, NotificationPayload{
-		Title: "Video Call Invitation",
-		Body:  fmt.Sprintf("%s invites you to a video call", inviterUsername),
+		Title: fmt.Sprintf("%s приглашает вас на звонок", inviterUsername),
+		Body:  fmt.Sprintf("Кликните и если %s нет - подождите немного!", inviterUsername),
 		Icon:  "/logo192.png",
 		Data: map[string]interface{}{
 			"type":          "room_invite",
@@ -99,8 +99,8 @@ func (s *Service) NotifyRoomInvite(inviterUserID, inviterUsername, invitedUserID
 
 func (s *Service) NotifyUserJoined(creatorUserID, joinerUsername, roomID string) error {
 	return s.SendNotification(creatorUserID, NotificationPayload{
-		Title: "Someone joined your room",
-		Body:  fmt.Sprintf("%s has joined the video call", joinerUsername),
+		Title: fmt.Sprintf("%s уже на звонке", joinerUsername),
+		Body:  fmt.Sprintf("Заходите скорее на звонок к %s!", joinerUsername),
 		Icon:  "/logo192.png",
 		Data: map[string]interface{}{
 			"type":       "user_joined",

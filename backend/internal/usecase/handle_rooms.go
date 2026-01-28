@@ -78,18 +78,29 @@ func (s *ApiUseCases) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send notification to room creator if he is absent but has push enabled
-	if s.pushService != nil && room.CreatorUserID != "" && room.CreatorUserID != claims.UserID {
-		for userID := range s.connections.WsClients {
-			if userID != claims.UserID {
-				go func() {
-					creator, err := s.userRepository.GetUser(room.CreatorUserID)
+	if s.pushService != nil && room.CreatorUserID != claims.UserID {
+		var notifyUsers []string
+		if len(s.connections.WsClients) > 0 {
+			for userID := range s.connections.WsClients {
+				if userID != claims.UserID {
+					notifyUsers = append(notifyUsers, userID)
+				}
+			}
+		} else {
+			notifyUsers = append(notifyUsers, room.CreatorUserID)
+		}
+
+		if len(notifyUsers) > 0 {
+			go func(users []string) {
+				for _, user := range users {
+					creator, err := s.userRepository.GetUser(user)
 					if err == nil && creator.PushSubscription != nil {
-						if err := s.pushService.NotifyUserJoined(room.CreatorUserID, claims.Username, roomID); err != nil {
+						if err := s.pushService.NotifyUserJoined(user, claims.Username, roomID); err != nil {
 							log.Printf("Failed to send join notification: %v", err)
 						}
 					}
-				}()
-			}
+				}
+			}(notifyUsers)
 		}
 	}
 

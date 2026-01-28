@@ -16,11 +16,15 @@ type Connections struct {
 	mu        sync.RWMutex
 }
 
-func NewConnections() *Connections {
-	return &Connections{
+func NewConnections(ctx context.Context, rs RoomRepositoryInterface) *Connections {
+	conns := &Connections{
 		WsClients: make(map[string]*messaging.Client),
 	}
+	conns.handleEmptyRooms(ctx, rs)
+
+	return conns
 }
+
 func (r *Connections) Publisher(ctx context.Context, sender *messaging.Client, read <-chan []byte, done chan<- struct{}) {
 	defer func() {
 		done <- struct{}{}
