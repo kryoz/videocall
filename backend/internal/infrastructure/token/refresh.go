@@ -14,10 +14,10 @@ type RefreshTokenService struct {
 	ttl  time.Duration
 }
 
-func NewRefreshTokenService(tokenRepository repositories.RefreshTokenRepositoryInterface, ttl int64) *RefreshTokenService {
+func NewRefreshTokenService(tokenRepository repositories.RefreshTokenRepositoryInterface, ttl time.Duration) *RefreshTokenService {
 	return &RefreshTokenService{
 		repo: tokenRepository,
-		ttl:  time.Duration(ttl) * time.Second,
+		ttl:  ttl,
 	}
 }
 

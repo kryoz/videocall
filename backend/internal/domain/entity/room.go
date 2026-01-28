@@ -6,5 +6,6 @@ import (
 
 type Room struct {
 	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	CreatorUserID string
 }

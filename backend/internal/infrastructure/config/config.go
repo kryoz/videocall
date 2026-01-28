@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -13,6 +14,7 @@ type Config struct {
 	Turn
 	VAPID
 	Storage
+	RoomConfig
 }
 
 type Storage struct {
@@ -28,23 +30,28 @@ type Storage struct {
 }
 
 type JWT struct {
-	Secret string `env:"JWT_SECRET" envDefault:"secret"`
-	TTL    int64  `env:"JWT_TTL" envDefault:"7200"`
+	Secret string        `env:"JWT_SECRET" envDefault:"secret"`
+	TTL    time.Duration `env:"JWT_TTL" envDefault:"2h"`
 }
 
 type RefreshToken struct {
-	TTL int64 `env:"REFRESH_TOKEN_TTL" envDefault:"86400"`
+	TTL time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"24h"`
 }
 
 type Turn struct {
-	Secret string `env:"TURN_SECRET" envDefault:"turn_secret"`
-	TTL    int64  `env:"TURN_TTL" envDefault:"7200"`
-	Host   string `env:"TURN_HOST" envDefault:"localhost:3478"`
+	Secret string        `env:"TURN_SECRET" envDefault:"turn_secret"`
+	TTL    time.Duration `env:"TURN_TTL" envDefault:"2h"`
+	Host   string        `env:"TURN_HOST" envDefault:"localhost:3478"`
 }
 
 type VAPID struct {
 	PublicKey  string `env:"VAPID_PUBLIC_KEY" envDefault:""`
 	PrivateKey string `env:"VAPID_PRIVATE_KEY" envDefault:""`
+}
+
+type RoomConfig struct {
+	TTL           time.Duration `env:"ROOM_TTL" envDefault:"4h"`
+	CleanInterval time.Duration `env:"ROOM_CLEAN_INTERVAL" envDefault:"60s"`
 }
 
 func NewFromEnv() (*Config, error) {

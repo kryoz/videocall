@@ -69,13 +69,16 @@ func (s *ApiUseCases) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Refresh token to include roomID
+	// Обновляем jwt, чтобы он стал содержать RoomID
 	jwtStr, _, err := s.jwt.Issue(claims.UserID, claims.Username, roomID)
 	if err != nil {
 		log.Printf("failed to generate token: %v", err)
 		http.Error(w, "cannot issue jwt", http.StatusInternalServerError)
 		return
 	}
+
+	// Обновляем метку времени комнаты, чтобы продлить время её жизни
+	s.roomRepository.RefreshRoom(roomID)
 
 	// Send notification to room creator if he is absent but has push enabled
 	if s.pushService != nil && room.CreatorUserID != claims.UserID {
@@ -136,15 +139,13 @@ func (s *ApiUseCases) HandleInviteToRoom(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Check if room exists
 	_, ok := s.roomRepository.GetRoom(roomID)
 	if !ok {
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
 
-	// Check if invited user exists and has push subscription
-	invitedUser, err := s.userRepository.GetUserByUsername(req.InvitedUsername)
+	invitedUser, err := s.userRepository.GetUserByUsername(strings.Trim(req.InvitedUsername, " "))
 	if err != nil {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return

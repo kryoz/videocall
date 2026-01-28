@@ -22,7 +22,7 @@ type Claims struct {
 func NewJWT(cfg *config.Config) *JWT {
 	return &JWT{
 		Secret: []byte(cfg.JWT.Secret),
-		Ttl:    time.Duration(cfg.JWT.TTL),
+		Ttl:    cfg.JWT.TTL,
 	}
 }
 

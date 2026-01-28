@@ -32,14 +32,14 @@ func (r *MariaDBRoomRepository) AddRoom(roomID, creatorUserID string) {
 
 func (r *MariaDBRoomRepository) GetRoom(roomID string) (*entity.Room, bool) {
 	query := `
-		SELECT id, creator_user_id, created_at
+		SELECT id, creator_user_id, created_at, updated_at
 		FROM rooms
 		WHERE id = ?
 	`
 	var roomIDDB, creatorUserID string
-	var createdAt time.Time
+	var createdAt, updatedAt time.Time
 
-	err := r.db.QueryRow(query, roomID).Scan(&roomIDDB, &creatorUserID, &createdAt)
+	err := r.db.QueryRow(query, roomID).Scan(&roomIDDB, &creatorUserID, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, false
@@ -50,16 +50,22 @@ func (r *MariaDBRoomRepository) GetRoom(roomID string) (*entity.Room, bool) {
 
 	return &entity.Room{
 		CreatedAt:     createdAt,
+		UpdatedAt:     updatedAt,
 		CreatorUserID: creatorUserID,
 	}, true
 }
 
-func (r *MariaDBRoomRepository) DeleteRoom(roomID string) {
-	query := `
-		DELETE FROM rooms
-		WHERE id = ?
-	`
+func (r *MariaDBRoomRepository) RefreshRoom(roomID string) {
+	query := `UPDATE rooms SET updated_at = NOW() WHERE id = ?`
 	_, err := r.db.Exec(query, roomID)
+	if err != nil {
+		log.Printf("error updating room: %v", err)
+	}
+}
+
+func (r *MariaDBRoomRepository) CleanRooms(ttl time.Duration) {
+	query := `DELETE FROM rooms WHERE updated_at <= ?`
+	_, err := r.db.Exec(query, time.Now().Add(-ttl))
 	if err != nil {
 		log.Printf("error deleting room: %v", err)
 	}

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -55,7 +56,7 @@ func (r *MariaDBUserRepository) GetUser(userID string) (*entity.User, error) {
 
 	err := r.db.QueryRow(query, userID).Scan(&id, &username, &password, &pushSubJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repositories.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
@@ -91,7 +92,7 @@ func (r *MariaDBUserRepository) GetUserByUsername(username string) (*entity.User
 
 	err := r.db.QueryRow(query, username).Scan(&id, &usernameDB, &password, &pushSubJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repositories.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to get user by username: %w", err)

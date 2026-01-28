@@ -39,7 +39,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		log.Println("⚠️ VAPID keys not configured, push notifications disabled")
 	}
 
-	wsConns := repositories.NewConnections(ctx, roomRepo)
+	wsConns := repositories.NewConnections()
+	repositories.HandleObsoleteRooms(ctx, roomRepo, cfg.RoomConfig)
 
 	apiUseCases := usecase.NewApiUseCases(ctx, roomRepo, userRepo, cfg, jwt, refreshTokenService, pushService, wsConns)
 	signalingUseCases := usecase.NewSignalingUseCases(ctx, wsConns, jwt, pushService)

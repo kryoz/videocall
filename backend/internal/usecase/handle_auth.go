@@ -72,7 +72,7 @@ func (s *ApiUseCases) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.NewString()
 	user := &entity.User{
 		ID:        userID,
-		Username:  req.Username,
+		Username:  strings.Trim(req.Username, " "),
 		Password:  string(hashedPassword),
 		CreatedAt: time.Now(),
 		IsGuest:   false,

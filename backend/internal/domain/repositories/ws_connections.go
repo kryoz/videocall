@@ -4,25 +4,18 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 	"videocall/internal/infrastructure/messaging"
 )
-
-const roomCheckInterval = 60 * time.Second
-const emptyRoomTtl = 15 * time.Minute
 
 type Connections struct {
 	WsClients map[string]*messaging.Client
 	mu        sync.RWMutex
 }
 
-func NewConnections(ctx context.Context, rs RoomRepositoryInterface) *Connections {
-	conns := &Connections{
+func NewConnections() *Connections {
+	return &Connections{
 		WsClients: make(map[string]*messaging.Client),
 	}
-	conns.handleEmptyRooms(ctx, rs)
-
-	return conns
 }
 
 func (r *Connections) Publisher(ctx context.Context, sender *messaging.Client, read <-chan []byte, done chan<- struct{}) {
@@ -65,36 +58,4 @@ func (r *Connections) RemoveClient(c *messaging.Client, roomID string) {
 	}
 
 	c.Close()
-}
-
-func (r *Connections) handleEmptyRooms(ctx context.Context, rs RoomRepositoryInterface) {
-	go func() {
-		ticker := time.NewTicker(roomCheckInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				r.mu.Lock()
-				rooms := make(map[string]bool, len(r.WsClients)/2)
-				for _, c := range r.WsClients {
-					if len(r.WsClients) == 0 {
-						rooms[c.RoomID] = true
-
-					}
-					//
-				}
-				for roomID := range r.WsClients {
-					room, _ := rs.GetRoom(roomID)
-					if room.CreatedAt.Add(emptyRoomTtl).Before(time.Now()) {
-						log.Printf("autoclean: delete empty room %s", roomID)
-						rs.DeleteRoom(roomID)
-					}
-				}
-				r.mu.Unlock()
-			}
-		}
-	}()
 }

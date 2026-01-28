@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"errors"
+	"time"
 
 	"videocall/internal/domain/entity"
 )
@@ -16,7 +17,8 @@ var (
 type RoomRepositoryInterface interface {
 	AddRoom(roomID, creatorUserID string)
 	GetRoom(roomID string) (*entity.Room, bool)
-	DeleteRoom(roomID string)
+	RefreshRoom(roomID string)
+	CleanRooms(ts time.Duration)
 }
 
 type UserRepositoryInterface interface {

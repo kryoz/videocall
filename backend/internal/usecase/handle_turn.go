@@ -12,7 +12,6 @@ import (
 )
 
 func (s *ApiUseCases) HandleTurn(w http.ResponseWriter, r *http.Request) {
-	// Проверка JWT
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {
 		http.Error(w, "missing bearer token", http.StatusUnauthorized)
@@ -32,9 +31,7 @@ func (s *ApiUseCases) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Генерация TURN credentials для use-auth-secret
-	// TTL 24 часа для стабильности
-	ttl := time.Duration(s.cfg.Turn.TTL) * time.Second
-	exp := time.Now().Add(ttl)
+	exp := time.Now().Add(s.cfg.Turn.TTL)
 	timestamp := exp.Unix()
 
 	// КРИТИЧЕСКИ ВАЖНО: username должен быть в формате "timestamp:username"
@@ -78,7 +75,7 @@ func (s *ApiUseCases) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	creds := map[string]interface{}{
 		"username": username,
 		"password": password,
-		"ttl":      int(ttl.Seconds()),
+		"ttl":      int(s.cfg.Turn.TTL.Seconds()),
 		"uris":     uris,
 	}
 
