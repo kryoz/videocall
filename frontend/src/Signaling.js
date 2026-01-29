@@ -1,5 +1,5 @@
 import {useEffect, useRef} from "react";
-import {useAuth} from "./AuthContext";
+import {useAuth} from "./contexts/AuthContext";
 
 export function Signaling({onRemoteUser, onRemoteStream, onPendingOffer, onStatsUpdate}) {
     const BASE_PATH = process.env.REACT_APP_BASE_PATH || "";

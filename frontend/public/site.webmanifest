@@ -1,6 +1,6 @@
 {
   "name": "Safe Video Calls",
-  "short_name": "VideoCall",
+  "short_name": "VideoCalls",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -15,7 +15,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#333333",
+  "background_color": "#3333333",
   "display": "standalone"
 }

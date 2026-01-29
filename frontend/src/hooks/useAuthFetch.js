@@ -1,5 +1,5 @@
 import {useCallback} from 'react';
-import {useAuth} from '../AuthContext';
+import {useAuth} from '../contexts/AuthContext';
 
 /**
  * Custom hook that wraps fetch with automatic JWT refresh on 401 errors

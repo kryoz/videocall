@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Card, Button, Form, Container, Alert, InputGroup, Modal } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "./AuthContext.js";
+import { useAuth } from "./contexts/AuthContext.js";
 import { inviteUserToRoom } from "./services/pushNotifications";
 import { useAuthFetch } from "./hooks/useAuthFetch";
+import { useBackButtonHandler } from './hooks/useBackButtonHandler';
 
 const BASE_PATH = process.env.REACT_APP_BASE_PATH || "";
 
@@ -31,16 +32,21 @@ export default function CreateRoom() {
     // Redirect to auth if no user
     useEffect(() => {
         if (!userId || !username) {
-            navigate("/auth");
+            goToAuth('/auth');
         }
     }, [userId, username, navigate]);
+
+    useBackButtonHandler({
+        isExitPage: true,
+        confirmMessage: 'Хотите закрыть приложение?'
+    });
 
     async function createRoom(ev) {
         ev.preventDefault();
 
         if (!jwt) {
             fadeError("Please authenticate first");
-            navigate("/auth");
+            goToAuth();
             return;
         }
 
@@ -49,7 +55,7 @@ export default function CreateRoom() {
         });
 
         if (!res.ok) {
-            fadeError("Failed to create room");
+            fadeError("Ошибка создания комнаты. Что-то на сервере.");
             return;
         }
 
@@ -71,11 +77,6 @@ export default function CreateRoom() {
         }
     };
 
-    const gotoJoin = () => {
-        if (!joinLink) return;
-        navigate(joinLink);
-    };
-
     const handleInvite = async () => {
         if (!inviteUsername || !roomId || !jwt) return;
 
@@ -95,7 +96,12 @@ export default function CreateRoom() {
     };
 
     const goToAuth = () => {
-        navigate("/auth");
+        navigate('/auth');
+    };
+
+    const gotoJoin = () => {
+        if (!joinLink) return;
+        navigate(joinLink, {replace: true});
     };
 
     return (

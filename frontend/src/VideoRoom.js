@@ -6,9 +6,9 @@ import { FaCameraRotate, FaDisplay } from "react-icons/fa6";
 import { CircularProgressbarWithChildren, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 
-import { useAuth } from "./AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import { Signaling } from "./Signaling";
-
+import { useBackButtonHandler } from './hooks/useBackButtonHandler';
 
 export default function VideoRoom() {
     const navigate = useNavigate();
@@ -50,10 +50,22 @@ export default function VideoRoom() {
 
     let mounted = true;
 
+    useBackButtonHandler({
+        preventBack: true,
+        onBackPress: () => {
+            const confirmed = window.confirm(
+                'Действительно хотите завершить?'
+            );
+            if (confirmed) {
+                leaveRoom();
+            }
+        }
+    });
+
     // Initialize local media stream
     useEffect(() => {
         if (!jwt) {
-            navigate(`/join/${room_id}`)
+            navigate(`/join/${room_id}`, {replace: true})
             return
         }
 
@@ -338,7 +350,7 @@ export default function VideoRoom() {
             remoteRef.current.srcObject = null;
         }
 
-        navigate("/");
+        navigate('/', { replace: true });
     };
 
     const videoSettings = (cameraMode) => {

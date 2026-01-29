@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Container, Card, Button, Alert } from "react-bootstrap";
-import { useAuth } from "./AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import { useAuthFetch } from "./hooks/useAuthFetch";
 
 const BASE_PATH = process.env.REACT_APP_BASE_PATH || "";
@@ -40,19 +40,17 @@ export default function JoinRoom() {
                     });
 
                     if (res.status === 404) {
-                        fadeError("Room not found");
+                        fadeError('Комната не найдена!');
                         setLoading(false);
                         return;
                     } else if (!res.ok) {
-                        fadeError("Server error, please try later");
-                        setLoading(false);
-                        return;
+                        throw new Error('Серверная ошибка, попробуйте ещё позднее')
                     }
 
                     // Room exists, now join it
                     await joinRoom();
                 } catch (err) {
-                    fadeError(err.message || "Failed to check room");
+                    fadeError(err.message);
                     setLoading(false);
                 }
             })();
@@ -67,26 +65,25 @@ export default function JoinRoom() {
 
             if (res.ok) {
                 const data = await res.json();
-
-                // Update jwt if we got a new one
+                // Обновляем jwt поскольку в него добавлен теперь room_id
                 if (data.jwt) {
                     setAuth(data.jwt, userId, username);
                 }
 
                 // Navigate to video room
-                navigate(`/room/${room_id}`);
+                navigate(`/room/${room_id}`, { replace: true });
             } else if (res.status === 406) {
-                fadeError("Room is full");
+                fadeError('Комната уже занята!');
                 setLoading(false);
             } else if (res.status === 404) {
-                fadeError("Room not found");
+                fadeError('Комната не найдена!');
                 setLoading(false);
             } else {
-                fadeError("Server error, please try later");
+                fadeError('Серверная ошибка, попробуйте ещё позднее');
                 setLoading(false);
             }
         } catch (err) {
-            fadeError(err.message || "Failed to join room");
+            fadeError(err.message || 'Серверная ошибка, попробуйте ещё позднее');
             setLoading(false);
         }
     };
@@ -146,7 +143,7 @@ export default function JoinRoom() {
                 <Button
                     variant="outline-secondary"
                     className="w-100"
-                    onClick={() => navigate("/")}
+                    onClick={() => navigate('/', {replace: true})}
                 >
                     На главную
                 </Button>

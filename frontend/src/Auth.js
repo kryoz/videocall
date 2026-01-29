@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "./AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import { subscribeToPushNotifications } from "./services/pushNotifications";
 import "./css/Auth.css";
 
@@ -18,7 +18,7 @@ export default function Auth() {
     useEffect(() => {
         // Wait for initialization to complete before redirecting
         if (!isInitializing && jwt) {
-            navigate("/");
+            navigate('/', {replace: true});
         }
     }, [jwt, isInitializing, navigate]);
 
@@ -45,7 +45,7 @@ export default function Auth() {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(errorText || "Authentication failed");
+                throw new Error(errorText || 'Ошибка авторизации');
             }
 
             const data = await response.json();
@@ -58,7 +58,7 @@ export default function Auth() {
                 console.log("✅ Push notifications enabled");
             }
 
-            navigate("/");
+            navigate('/', {replace: true});
         } catch (err) {
             fadeError(err.message);
         } finally {
@@ -77,14 +77,14 @@ export default function Auth() {
             });
 
             if (!response.ok) {
-                throw new Error("Failed to create guest session");
+                throw new Error('Ошибка создания гостя: '+response.text);
             }
 
             const data = await response.json();
             setAuth(data.jwt, data.user_id, data.username);
             setRefreshAuth(data.token, data.expires);
 
-            navigate("/");
+            navigate('/', {replace: true});
         } catch (err) {
             fadeError(err.message);
         }
@@ -166,7 +166,7 @@ export default function Auth() {
 
                 {mode === "register" && (
                     <div className="auth-info">
-                        <small>Регистрация позволяет слать приглашения</small>
+                        <small>Регистрация позволит звонить через push</small>
                     </div>
                 )}
 
