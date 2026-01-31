@@ -44,10 +44,14 @@ export function AuthProvider({ children }) {
 
         refreshPromiseRef.current = (async () => {
             try {
+                let req = {token: currentRefreshToken}
+                if (jwt && jwt.roomId) {
+                    req.roomId = jwt.roomId
+                }
                 const response = await fetch(`${BASE_PATH}/api/auth/refresh`, {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({token: currentRefreshToken})
+                    body: JSON.stringify(req)
                 });
 
                 if (!response.ok) {

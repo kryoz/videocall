@@ -54,7 +54,7 @@ export default function VideoRoom() {
         preventBack: true,
         onBackPress: () => {
             const confirmed = window.confirm(
-                'Действительно хотите завершить?'
+                'Действительно хотите завершить звонок?'
             );
             if (confirmed) {
                 leaveRoom();

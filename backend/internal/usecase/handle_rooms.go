@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"videocall/internal/domain/entity"
 
 	"github.com/google/uuid"
 )
@@ -145,7 +146,7 @@ func (s *ApiUseCases) HandleInviteToRoom(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	invitedUser, err := s.userRepository.GetUserByUsername(strings.Trim(req.InvitedUsername, " "))
+	invitedUser, err := s.userRepository.GetUserByUsername(entity.UsernameNormalize(req.InvitedUsername))
 	if err != nil {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return

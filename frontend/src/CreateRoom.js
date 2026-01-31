@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Card, Button, Form, Container, Alert, InputGroup, Modal } from "react-bootstrap";
-import { useNavigate } from "react-router-dom";
+import {useLocation, useNavigate} from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext.js";
 import { inviteUserToRoom } from "./services/pushNotifications";
 import { useAuthFetch } from "./hooks/useAuthFetch";
@@ -15,6 +15,7 @@ export default function CreateRoom() {
     const [roomId, setRoomId] = useState(null);
     const [copied, setCopied] = useState(false);
     const navigate = useNavigate();
+    const location = useLocation();
     const [error, setError] = useState("");
     const authFetch = useAuthFetch();
 
@@ -96,7 +97,10 @@ export default function CreateRoom() {
     };
 
     const goToAuth = () => {
-        navigate('/auth');
+        navigate('/auth', {
+            replace: true,
+            state: { from: location.pathname + location.search }
+        });
     };
 
     const gotoJoin = () => {

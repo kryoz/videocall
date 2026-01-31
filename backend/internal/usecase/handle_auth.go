@@ -33,7 +33,8 @@ type GuestRequest struct {
 }
 
 type RefreshTokenRequest struct {
-	Token string `json:"token"`
+	Token  string `json:"token"`
+	RoomID string `json:"room_id,omitempty"`
 }
 
 type PushSubscriptionRequest struct {
@@ -72,7 +73,7 @@ func (s *ApiUseCases) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.NewString()
 	user := &entity.User{
 		ID:        userID,
-		Username:  strings.Trim(req.Username, " "),
+		Username:  entity.UsernameNormalize(req.Username),
 		Password:  string(hashedPassword),
 		CreatedAt: time.Now(),
 		IsGuest:   false,
@@ -144,7 +145,7 @@ func (s *ApiUseCases) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("✅ User logged in: %s (ID: %s)", user.Username, user.ID)
+	log.Printf("✅ New jwt token issued by login: %s (ID: %s)", user.Username, user.ID)
 
 	writeJSON(w, map[string]string{
 		"token":    refreshToken.Token,
@@ -226,15 +227,14 @@ func (s *ApiUseCases) HandleRefreshToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	//todo maybe add roomID to request?
-	jwtStr, _, err := s.jwt.Issue(tok.UserID, user.Username, "")
+	jwtStr, _, err := s.jwt.Issue(tok.UserID, user.Username, req.RoomID)
 	if err != nil {
 		log.Printf("failed to generate jwt: %v", err)
 		http.Error(w, "cannot issue jwt", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ User logged in: %s (ID: %s)", user.Username, user.ID)
+	log.Printf("✅ New jwt token issued by refresh token: %s (room: %s)", user.Username, req.RoomID)
 
 	writeJSON(w, map[string]string{
 		"jwt":      jwtStr,

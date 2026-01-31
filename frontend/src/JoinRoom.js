@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {useLocation, useNavigate, useParams} from "react-router-dom";
 import { Container, Card, Button, Alert } from "react-bootstrap";
 import { useAuth } from "./contexts/AuthContext";
 import { useAuthFetch } from "./hooks/useAuthFetch";
@@ -10,6 +10,7 @@ export default function JoinRoom() {
     const { room_id } = useParams();
     const { username, userId, jwt, setAuth, isInitializing, refreshToken } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation()
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(true);
     const authFetch = useAuthFetch();
@@ -33,60 +34,36 @@ export default function JoinRoom() {
 
         if (jwt) {
             (async () => {
-                // Check if room exists
                 try {
-                    const res = await authFetch(`${BASE_PATH}/api/rooms/${room_id}/fetch`, {
+                    const res = await authFetch(`${BASE_PATH}/api/rooms/${room_id}/join`, {
                         method: "POST",
                     });
 
-                    if (res.status === 404) {
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Обновляем jwt поскольку в него добавлен теперь room_id
+                        if (data.jwt) {
+                            setAuth(data.jwt, userId, username);
+                        }
+
+                        // Переходим на страницу звонка VideoRoom
+                        navigate(`/room/${room_id}`, {replace: true});
+                    } else if (res.status === 406) {
+                        fadeError('Комната уже занята!');
+                        setLoading(false);
+                    } else if (res.status === 404) {
                         fadeError('Комната не найдена!');
                         setLoading(false);
-                        return;
-                    } else if (!res.ok) {
-                        throw new Error('Серверная ошибка, попробуйте ещё позднее')
+                    } else {
+                        throw new Error()
                     }
-
-                    // Room exists, now join it
-                    await joinRoom();
                 } catch (err) {
-                    fadeError(err.message);
+                    fadeError(err.message || 'Серверная ошибка, попробуйте  позднее');
                     setLoading(false);
                 }
             })();
         }
     }, [jwt, refreshToken, isInitializing, room_id]);
-
-    const joinRoom = async () => {
-        try {
-            const res = await authFetch(`${BASE_PATH}/api/rooms/${room_id}/join`, {
-                method: "POST",
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                // Обновляем jwt поскольку в него добавлен теперь room_id
-                if (data.jwt) {
-                    setAuth(data.jwt, userId, username);
-                }
-
-                // Navigate to video room
-                navigate(`/room/${room_id}`, { replace: true });
-            } else if (res.status === 406) {
-                fadeError('Комната уже занята!');
-                setLoading(false);
-            } else if (res.status === 404) {
-                fadeError('Комната не найдена!');
-                setLoading(false);
-            } else {
-                fadeError('Серверная ошибка, попробуйте ещё позднее');
-                setLoading(false);
-            }
-        } catch (err) {
-            fadeError(err.message || 'Серверная ошибка, попробуйте ещё позднее');
-            setLoading(false);
-        }
-    };
 
     // Show loading while initializing auth
     if (isInitializing || (loading && (jwt || refreshToken))) {
@@ -117,7 +94,12 @@ export default function JoinRoom() {
                     <Button
                         variant="secondary"
                         className="w-100 mb-2"
-                        onClick={() => navigate("/auth")}
+                        onClick={() => navigate(
+                            '/auth', {
+                                replace: true,
+                                state: { from: location.pathname + location.search }
+                            })
+                    }
                     >
                         Авторизоваться
                     </Button>
@@ -125,7 +107,7 @@ export default function JoinRoom() {
                     <Button
                         variant="outline-secondary"
                         className="w-100"
-                        onClick={() => navigate("/")}
+                        onClick={() => navigate('/', {replace: true})}
                     >
                         На главную
                     </Button>

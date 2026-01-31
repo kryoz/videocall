@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import {useLocation, useNavigate} from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import { subscribeToPushNotifications } from "./services/pushNotifications";
 import "./css/Auth.css";
@@ -14,11 +14,14 @@ export default function Auth() {
     const [loading, setLoading] = useState(false);
     const { setAuth, setRefreshAuth, jwt, isInitializing } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    const from = location.state?.from || "/";
 
     useEffect(() => {
         // Wait for initialization to complete before redirecting
         if (!isInitializing && jwt) {
-            navigate('/', {replace: true});
+            navigate(from, { replace: true });
         }
     }, [jwt, isInitializing, navigate]);
 
@@ -58,7 +61,7 @@ export default function Auth() {
                 console.log("✅ Push notifications enabled");
             }
 
-            navigate('/', {replace: true});
+            navigate(from, { replace: true });
         } catch (err) {
             fadeError(err.message);
         } finally {
@@ -84,7 +87,7 @@ export default function Auth() {
             setAuth(data.jwt, data.user_id, data.username);
             setRefreshAuth(data.token, data.expires);
 
-            navigate('/', {replace: true});
+            navigate(from, { replace: true });
         } catch (err) {
             fadeError(err.message);
         }
