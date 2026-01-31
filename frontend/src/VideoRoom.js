@@ -48,6 +48,14 @@ export default function VideoRoom() {
     const [videoQuality, setVideoQuality] = useState(100);
     const [isScreenSharing, setIsScreenSharing] = useState(false);
 
+    // Drag state for mini video
+    const [isDragging, setIsDragging] = useState(false);
+    const [position, setPosition] = useState({ x: window.innerWidth - 200, y: 5 });
+    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+    const miniVideoRef = useRef(null);
+
+    const [isAudioOnly, setIsAudioOnly] = useState(false)
+
     let mounted = true;
 
     useBackButtonHandler({
@@ -147,6 +155,7 @@ export default function VideoRoom() {
     }
 
     const initAudioOnly = async () => {
+        setIsAudioOnly(true)
         return await navigator.mediaDevices.getUserMedia({
             audio: audioSettings(),
         });
@@ -379,13 +388,80 @@ export default function VideoRoom() {
         }
     }
 
+    // Drag handlers for mini video
+    const handleDragStart = (e) => {
+        e.preventDefault();
+        
+        const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        
+        if (miniVideoRef.current) {
+            const rect = miniVideoRef.current.getBoundingClientRect();
+            setDragOffset({
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            });
+        }
+        
+        setIsDragging(true);
+    };
+
+    const handleDragMove = (e) => {
+        if (!isDragging) return;
+        
+        e.preventDefault();
+        
+        const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        
+        const videoWidth = miniVideoRef.current?.offsetWidth || 180;
+        const videoHeight = miniVideoRef.current?.offsetHeight || 135;
+        
+        let newX = clientX - dragOffset.x;
+        let newY = clientY - dragOffset.y;
+        
+        // Проверка границ области видимости при движении карточки
+        const maxX = window.innerWidth - videoWidth;
+        const maxY = window.innerHeight - videoHeight;
+        
+        newX = Math.max(0, Math.min(newX, maxX));
+        newY = Math.max(0, Math.min(newY, maxY));
+        
+        setPosition({ x: newX, y: newY });
+    };
+
+    const handleDragEnd = () => {
+        setIsDragging(false);
+    };
+
+    useEffect(() => {
+        if (isDragging) {
+            const moveHandler = (e) => handleDragMove(e);
+            const endHandler = () => handleDragEnd();
+            
+            // Mouse events
+            window.addEventListener('mousemove', moveHandler);
+            window.addEventListener('mouseup', endHandler);
+            
+            // Touch events
+            window.addEventListener('touchmove', moveHandler, { passive: false });
+            window.addEventListener('touchend', endHandler);
+            
+            return () => {
+                window.removeEventListener('mousemove', moveHandler);
+                window.removeEventListener('mouseup', endHandler);
+                window.removeEventListener('touchmove', moveHandler);
+                window.removeEventListener('touchend', endHandler);
+            };
+        }
+    }, [isDragging, dragOffset]);
+
     function ConnectionQualityIndicator({ quality = 100}) {
         const color =
-            quality > 75 ? "#4caf50" : quality > 40 ? "#ffb300" : "#f44336";
+            quality > 80 ? "#4caf50" : quality > 40 ? "#ffb300" : "#f44336";
 
-        // Текстовая подсказка
         const label =
-            quality > 75 ? "Отлично" : quality > 40 ? "Средне" : "Плохо";
+            quality > 80 ? "Отлично" : quality > 40 ? "Средне" : "Плохо";
 
         return (
             <div
@@ -455,18 +531,30 @@ export default function VideoRoom() {
             )}
 
             {/* Mini video */}
-            <Card
-                className="video-thumbnail shadow-sm border-light bg-dark bg-opacity-75"
-                style={{ cursor: 'pointer' }}
-            >
-                <video
-                    ref={localRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-100 rounded"
-                />
-            </Card>
+            {!isAudioOnly && (
+                <Card
+                    ref={miniVideoRef}
+                    className={`video-thumbnail shadow-sm border-light bg-dark bg-opacity-75 ${isDragging ? 'dragging' : ''}`}
+                    style={{
+                        left: `${position.x}px`,
+                        top: `${position.y}px`,
+                        cursor: isDragging ? 'grabbing' : 'grab',
+                        userSelect: 'none',
+                        touchAction: 'none'
+                    }}
+                    onMouseDown={handleDragStart}
+                    onTouchStart={handleDragStart}
+                >
+                    <video
+                        ref={localRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-100 rounded"
+                        style={{ pointerEvents: 'none' }}
+                    />
+                </Card>
+            )}
 
             {/* Audio-only indicator */}
             {hasRemoteStream && !hasRemoteVideo && (
@@ -486,7 +574,7 @@ export default function VideoRoom() {
             {/* Remote user name */}
             <div className="position-absolute top-0 start-0 p-3">
                 <h5 className="text-light mb-0">
-                    {remoteUser ? `👤 ${remoteUser}` : "Ожидание подключения..."}
+                    {remoteUser ? `${remoteUser}` : ""}
                 </h5>
             </div>
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Card, Button, Form, Container, Alert, InputGroup, Modal } from "react-bootstrap";
 import {useLocation, useNavigate} from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext.js";
@@ -24,6 +24,7 @@ export default function CreateRoom() {
     const [inviteUsername, setInviteUsername] = useState("");
     const [inviteLoading, setInviteLoading] = useState(false);
     const [inviteError, setInviteError] = useState("");
+    const inviteInputRef = useRef(null);
 
     const fadeError = (msg) => {
         setError(msg);
@@ -41,6 +42,15 @@ export default function CreateRoom() {
         isExitPage: true,
         confirmMessage: 'Хотите закрыть приложение?'
     });
+
+    // Автофокус на поле с вводом ника для приглашения
+    useEffect(() => {
+        if (showInviteModal && inviteInputRef.current) {
+            setTimeout(() => {
+                inviteInputRef.current?.focus();
+            }, 100);
+        }
+    }, [showInviteModal]);
 
     async function createRoom(ev) {
         ev.preventDefault();
@@ -173,6 +183,7 @@ export default function CreateRoom() {
                     <Form.Group>
                         <Form.Label>Кого пригласить?</Form.Label>
                         <Form.Control
+                            ref={inviteInputRef}
                             value={inviteUsername}
                             onChange={(e) => setInviteUsername(e.target.value)}
                             placeholder="Введите имя пользователя"

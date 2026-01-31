@@ -12,13 +12,25 @@
 
 .video-thumbnail {
     position: absolute !important;
-    bottom: 100px;
-    right: 20px;
     width: 180px;
-    cursor: pointer;
     border-radius: 10px;
-    transition: transform 0.2s ease;
-    transform: scaleX(-1)
+    transition: box-shadow 0.2s ease;
+    transform: scaleX(-1);
+    z-index: 15;
+    overflow: hidden;
+}
+
+.video-thumbnail.dragging {
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6) !important;
+    transition: none;
+}
+
+.video-thumbnail:active {
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.8);
+}
+
+.video-thumbnail:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
 }
 
 .control-bar {
@@ -56,8 +68,6 @@
 @media (max-width: 768px) {
     .video-thumbnail {
         width: 120px;
-        bottom: 100px;
-        right: 10px;
     }
     .control-bar {
         gap: 10px;
